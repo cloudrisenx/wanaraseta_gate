@@ -131,13 +131,19 @@ void handleSaveFolder() {
     preferences.putString("ota_folder", newFolder);
     preferences.end();
     
-    server.send(200, "text/html", "<html><body style='background:#121212; color:#00adb5; text-align:center; padding:50px; font-family:Arial;'><h2>Target mesin diubah ke: " + newFolder + "</h2><p style='color:#fff;'>Sistem sedang di-restart...</p></body></html>");
+    String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Target mesin diubah ke: " + newFolder + "</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
+    server.send(200, "text/html", html);
     delay(2000);
     ESP.restart();
   }
 }
 
 void handleCekUpdate() {
+  String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .loader{border:6px solid #1e1e1e;border-top:6px solid #00adb5;border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2 style='color:#00adb5;'>Menghubungi GitHub...</h2><div class='loader'></div><p>Sistem sedang memproses OTA, mohon tunggu sebentar...</p></body></html>";
+  server.send(200, "text/html", html);
+}
+
+void handleDoUpdate() {
   String hasilLog = cekUpdateGitHub();
   
   String html = R"rawliteral(
@@ -193,6 +199,7 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/save_folder", HTTP_POST, handleSaveFolder);
   server.on("/cek_update", HTTP_GET, handleCekUpdate);
+  server.on("/do_update", HTTP_GET, handleDoUpdate);
   server.begin();
   
   // Untuk firmware "Installer", kita non-aktifkan pengecekan otomatis saat boot.
