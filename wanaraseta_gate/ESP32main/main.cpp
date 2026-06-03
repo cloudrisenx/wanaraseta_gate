@@ -10,7 +10,7 @@
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.0"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "1.2"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -20,6 +20,8 @@
 
 // Interval otomatis cek update ke GitHub (dalam milidetik, 7.200.000 = 2 Jam)
 #define UPDATE_INTERVAL_MS  7200000             
+
+#define LED_PIN             2                   // Pin LED Bawaan ESP32 (Build-in LED)
 
 // ========================================================================
 
@@ -175,6 +177,9 @@ void setup() {
 
   // Otomatis cek pembaruan firmware 1x saat alat baru menyala
   cekUpdateGitHub();
+
+  // Setup Pin LED sebagai Output
+  pinMode(LED_PIN, OUTPUT);
 }
 
 void loop() {
@@ -190,4 +195,13 @@ void loop() {
   // ---------------------------------------------------------
   // MASUKKAN LOGIKA RFID, KONTROL GERBANG & EMQX DI SINI
   // ---------------------------------------------------------
+
+  // Logika Blink LED (Tanpa mengganggu portal Web / tanpa Delay)
+  static unsigned long lastBlink = 0;
+  static bool ledState = false;
+  if (millis() - lastBlink > 500) { 
+    lastBlink = millis();
+    ledState = !ledState;
+    digitalWrite(LED_PIN, ledState);
+  }
 }

@@ -27,21 +27,21 @@ WebServer server(80);
 WiFiManager wm;
 Preferences preferences;
 
-String branchAktif = "main";
+String folderAktif = "ESP32main";
 String savedApSSID = DEFAULT_AP_SSID;
 
 // ========================================================================
 // 2. FUNGSI OTA GITHUB
 // ========================================================================
 void cekUpdateGitHub() {
-  Serial.println("\n[OTA] Memeriksa update di cabang GitHub: " + branchAktif);
+  Serial.println("\n[OTA] Memeriksa update di cabang GitHub: main");
   
-  // Rakit nama folder secara dinamis (AUTO_FOLDER_NAME disuntik otomatis dari copy_otomatis.py)
-  String folderPath = String(GITHUB_REPO) + "/" + AUTO_FOLDER_NAME;
+  // Rakit nama folder berdasarkan pilihan yang disimpan via Web Dashboard
+  String folderPath = String(GITHUB_REPO) + "/" + folderAktif;
 
   // Rakit URL secara dinamis berdasarkan konfigurasi di atas
-  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/" + branchAktif + "/" + folderPath + "/version.txt";
-  String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/" + branchAktif + "/" + folderPath + "/firmware.bin";
+  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/version.txt";
+  String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/firmware.bin";
 
   WiFiClientSecure client;
   client.setInsecure(); // Bebas SSL
@@ -103,17 +103,20 @@ void handleRoot() {
       <h2>Wanara Seta - Gate Portal</h2>
       <div class='info-text'>
         <p>Versi Firmware : <strong style='color:#fff;'>{{VERSION}}</strong></p>
-        <p>Jalur Update   : <strong style='color:#fff;'>{{BRANCH}}</strong></p>
+        <p>Target Mesin   : <strong style='color:#fff;'>{{FOLDER}}</strong></p>
       </div>
       
       <hr>
-      <h3>Pengaturan Jalur Update OTA</h3>
-      <form action='/save_branch' method='POST'>
-        <select name='branch_name'>
-          <option value='main' {{SEL_MAIN}}>MAIN (Jalur Stabil)</option>
-          <option value='testing' {{SEL_TEST}}>TESTING (Jalur Eksperimen)</option>
+      <h3>Pengaturan Mesin/Board (Firmware Folder)</h3>
+      <form action='/save_folder' method='POST'>
+        <select name='folder_name'>
+          <option value='ESP32main' {{SEL_ESP32MAIN}}>Mesin ESP32 (ESP32main)</option>
+          <option value='ESP32_test' {{SEL_ESP32TEST}}>Mesin ESP32 Test (ESP32_test)</option>
+          <option value='WT32main' {{SEL_WT32MAIN}}>Mesin WT32 (WT32main)</option>
+          <option value='WT32_test' {{SEL_WT32TEST}}>Mesin WT32 Test (WT32_test)</option>
+          <option value='src_mainOTA' {{SEL_SRCMAINOTA}}>Main OTA (src_mainOTA)</option>
         </select>
-        <input type='submit' class='btn-orange' value='SIMPAN PENGATURAN & RESTART'>
+        <input type='submit' class='btn-orange' value='SIMPAN MESIN & RESTART'>
       </form>
 
       <form action='/cek_update' method='GET'>
@@ -126,21 +129,24 @@ void handleRoot() {
 
   // Me-replace template teks dengan variabel C++ agar dinamis
   html.replace("{{VERSION}}", APP_VERSION);
-  html.replace("{{BRANCH}}", branchAktif);
-  html.replace("{{SEL_MAIN}}", branchAktif == "main" ? "selected" : "");
-  html.replace("{{SEL_TEST}}", branchAktif == "testing" ? "selected" : "");
+  html.replace("{{FOLDER}}", folderAktif);
+  html.replace("{{SEL_ESP32MAIN}}", folderAktif == "ESP32main" ? "selected" : "");
+  html.replace("{{SEL_ESP32TEST}}", folderAktif == "ESP32_test" ? "selected" : "");
+  html.replace("{{SEL_WT32MAIN}}", folderAktif == "WT32main" ? "selected" : "");
+  html.replace("{{SEL_WT32TEST}}", folderAktif == "WT32_test" ? "selected" : "");
+  html.replace("{{SEL_SRCMAINOTA}}", folderAktif == "src_mainOTA" ? "selected" : "");
 
   server.send(200, "text/html", html);
 }
 
-void handleSaveBranch() {
-  if (server.hasArg("branch_name")) {
-    String newBranch = server.arg("branch_name");
+void handleSaveFolder() {
+  if (server.hasArg("folder_name")) {
+    String newFolder = server.arg("folder_name");
     preferences.begin("gate_config", false);
-    preferences.putString("ota_branch", newBranch);
+    preferences.putString("ota_folder", newFolder);
     preferences.end();
     
-    server.send(200, "text/html", "<html><body style='background:#121212; color:#00adb5; text-align:center; padding:50px; font-family:Arial;'><h2>Jalur berhasil diubah ke: " + newBranch + "</h2><p style='color:#fff;'>Sistem sedang di-restart...</p></body></html>");
+    server.send(200, "text/html", "<html><body style='background:#121212; color:#00adb5; text-align:center; padding:50px; font-family:Arial;'><h2>Target mesin diubah ke: " + newFolder + "</h2><p style='color:#fff;'>Sistem sedang di-restart...</p></body></html>");
     delay(2000);
     ESP.restart();
   }
@@ -159,9 +165,9 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  // Ambil data cabang (branch) dan nama AP WiFi dari memori internal
+  // Ambil data folder aktif dan nama AP WiFi dari memori internal
   preferences.begin("gate_config", true);
-  branchAktif = preferences.getString("ota_branch", "main"); 
+  folderAktif = preferences.getString("ota_folder", "ESP32main"); 
   savedApSSID = preferences.getString("ap_ssid", DEFAULT_AP_SSID); // Mengambil dari const di atas
   preferences.end();
 
@@ -172,7 +178,7 @@ void setup() {
 
   // Routing Halaman Web
   server.on("/", handleRoot);
-  server.on("/save_branch", HTTP_POST, handleSaveBranch);
+  server.on("/save_folder", HTTP_POST, handleSaveFolder);
   server.on("/cek_update", HTTP_GET, handleCekUpdate);
   server.begin();
 
