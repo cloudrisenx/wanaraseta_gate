@@ -36,9 +36,12 @@ String savedApSSID = DEFAULT_AP_SSID;
 void cekUpdateGitHub() {
   Serial.println("\n[OTA] Memeriksa update di cabang GitHub: " + branchAktif);
   
+  // Rakit nama folder secara dinamis (AUTO_FOLDER_NAME disuntik otomatis dari copy_otomatis.py)
+  String folderPath = String(GITHUB_REPO) + "/" + AUTO_FOLDER_NAME;
+
   // Rakit URL secara dinamis berdasarkan konfigurasi di atas
-  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/" + branchAktif + "/version.txt";
-  String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/" + branchAktif + "/firmware.bin";
+  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/" + branchAktif + "/" + folderPath + "/version.txt";
+  String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/" + branchAktif + "/" + folderPath + "/firmware.bin";
 
   WiFiClientSecure client;
   client.setInsecure(); // Bebas SSL
