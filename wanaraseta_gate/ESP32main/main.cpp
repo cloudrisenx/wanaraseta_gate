@@ -4,13 +4,14 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <WiFiClientSecure.h>
+#include <esp_task_wdt.h> // Untuk Task Watchdog Timer
 #include <Preferences.h>
 
 // ========================================================================
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.3"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "1.1"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -26,6 +27,9 @@
 #define TOUCH_THRESHOLD     30                  // Batas deteksi sentuhan (biasanya < 40 jika disentuh)
 #define GATE_OPEN_MS        3000                // Lama gate terbuka (LED nyala) dalam milidetik (3 detik)
 
+// Watchdog Timer configuration
+#define WDT_TIMEOUT_SECONDS 5  // Dibuat lebih waspada: Jika loop() nge-hang > 5 detik, ESP akan restart
+
 // ========================================================================
 
 WebServer server(80);
@@ -34,6 +38,10 @@ Preferences preferences;
 
 String folderAktif = "ESP32main";
 String savedApSSID = DEFAULT_AP_SSID;
+
+// Flag untuk menunda proses download agar web tidak nge-hang
+bool pendingOTAUpdate = false;
+String pendingOTAUrl = "";
 
 // ========================================================================
 // 2. FUNGSI OTA GITHUB
@@ -64,16 +72,12 @@ String cekUpdateGitHub() {
     otaLog += "[OTA] Versi GitHub  : " + versiDiGitHub + "\n";
 
     if (versiDiGitHub != APP_VERSION && versiDiGitHub.length() > 0) {
-      otaLog += "[OTA] >> UPDATE DITEMUKAN! Sedang menyedot firmware...\n";
-
-      httpUpdate.rebootOnUpdate(false); // Cegah restart otomatis agar log bisa dikirim ke web
-      t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
-
-      if (ret == HTTP_UPDATE_OK) {
-        otaLog += "[OTA] >> UPDATE SUKSES! ESP32 akan restart otomatis.\n";
-      } else {
-        otaLog += "[OTA] >> GAGAL UPDATE: " + httpUpdate.getLastErrorString() + " (" + String(httpUpdate.getLastError()) + ")\n";
-      }
+      otaLog += "[OTA] >> UPDATE DITEMUKAN! File terbaru tersedia.\n";
+      otaLog += "[OTA] >> ESP32 akan memulai proses download di background setelah log ini tampil.\n";
+      
+      // Aktifkan flag agar eksekusi download dilakukan di dalam loop()
+      pendingOTAUpdate = true;
+      pendingOTAUrl = urlFirmware;
     } else {
       otaLog += "[OTA] >> Firmware sudah paling baru. Aman terkendali.\n";
     }
@@ -195,11 +199,6 @@ void handleDoUpdate() {
   )rawliteral";
 
   server.send(200, "text/html", html);
-
-  if (hasilLog.indexOf("SUKSES") > 0) {
-    delay(2000);
-    ESP.restart();
-  }
 }
 
 // ========================================================================
@@ -227,24 +226,52 @@ void setup() {
   server.on("/do_update", HTTP_GET, handleDoUpdate);
   server.begin();
 
+  // Aktifkan Task Watchdog Timer SETELAH WiFi Terhubung (Mencegah restart saat loading WiFi)
+  // Ini akan mereset ESP32 jika loop() (atau fungsi yang dipanggilnya) nge-hang
+  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true); 
+  esp_task_wdt_add(NULL); 
+
   // Otomatis cek pembaruan firmware 1x saat alat baru menyala
-  if (cekUpdateGitHub().indexOf("SUKSES") > 0) {
-    ESP.restart();
-  }
+  cekUpdateGitHub(); 
+  // (Proses download dan restart akan dieksekusi otomatis oleh loop() jika ada update)
 
   // Setup Pin LED sebagai Output
   pinMode(LED_PIN, OUTPUT);
 }
 
 void loop() {
-  server.handleClient(); // Jaga agar portal web tetap responsif
+  server.handleClient(); // Jaga agar server web tetap responsif
+
+  // Beri makan Task Watchdog Timer agar tidak reset
+  esp_task_wdt_reset();
+
+  // Jika ada flag update, eksekusi download di sini agar tidak memblokir balasan web
+  if (pendingOTAUpdate) {
+    pendingOTAUpdate = false;
+    delay(1000); // Beri jeda 1 detik agar ESP32 selesai mengirim halaman web ke HP/Laptop
+    
+    Serial.println("\n[OTA-BACKGROUND] Memulai proses download firmware dari GitHub...");
+    WiFiClientSecure client;
+    client.setInsecure(); // Bebas SSL
+    
+    httpUpdate.rebootOnUpdate(false); // Atur manual restart
+    esp_task_wdt_delete(NULL); // Matikan WDT sementara
+    t_httpUpdate_return ret = httpUpdate.update(client, pendingOTAUrl);
+    esp_task_wdt_add(NULL); // Hidupkan WDT kembali
+    
+    if (ret == HTTP_UPDATE_OK) {
+      Serial.println("[OTA-BACKGROUND] >> UPDATE SUKSES! ESP32 akan restart otomatis.");
+      delay(1000);
+      ESP.restart();
+    } else {
+      Serial.printf("[OTA-BACKGROUND] >> GAGAL UPDATE: %s (%d)\n", httpUpdate.getLastErrorString().c_str(), httpUpdate.getLastError());
+    }
+  }
 
   // Timer: Otomatis cek update setiap beberapa jam (Sesuai konstanta UPDATE_INTERVAL_MS)
   static unsigned long lastCheck = 0;
   if (millis() - lastCheck > UPDATE_INTERVAL_MS) { 
-    if (cekUpdateGitHub().indexOf("SUKSES") > 0) {
-      ESP.restart();
-    }
+    cekUpdateGitHub();
     lastCheck = millis();
   }
 

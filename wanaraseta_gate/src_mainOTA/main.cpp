@@ -4,6 +4,7 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 #include <WiFiClientSecure.h>
+#include <esp_task_wdt.h> // Untuk Task Watchdog Timer
 #include <Preferences.h>
 
 // ========================================================================
@@ -19,7 +20,11 @@
 #define DEFAULT_AP_PASSWORD "griyapersada"      
 
 // Interval otomatis cek update ke GitHub (dalam milidetik, 7.200.000 = 2 Jam)
+// (Catatan: Untuk firmware installer ini, sebaiknya dinonaktifkan cek otomatisnya. Lihat di setup())
 #define UPDATE_INTERVAL_MS  7200000             
+
+// Watchdog Timer configuration
+#define WDT_TIMEOUT_SECONDS 5  // Dibuat lebih waspada: Jika loop() nge-hang > 5 detik, ESP akan restart
 
 // ========================================================================
 
@@ -29,6 +34,10 @@ Preferences preferences;
 
 String folderAktif = "ESP32main";
 String savedApSSID = DEFAULT_AP_SSID;
+
+// Flag untuk menunda proses download agar web tidak nge-hang
+bool pendingOTAUpdate = false;
+String pendingOTAUrl = "";
 
 // ========================================================================
 // 2. FUNGSI OTA GITHUB
@@ -46,16 +55,12 @@ String cekUpdateGitHub() {
   WiFiClientSecure client;
   client.setInsecure(); // Bebas SSL
 
-  otaLog += "[OTA] >> Memulai instalasi firmware dari: " + folderAktif + "\n";
-
-  httpUpdate.rebootOnUpdate(false); // Cegah restart otomatis agar log bisa dikirim ke web
-  t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
-
-  if (ret == HTTP_UPDATE_OK) {
-    otaLog += "[OTA] >> INSTALASI SUKSES! ESP32 akan restart otomatis.\n";
-  } else {
-    otaLog += "[OTA] >> GAGAL INSTALASI: " + httpUpdate.getLastErrorString() + " (" + String(httpUpdate.getLastError()) + ")\n";
-  }
+  otaLog += "[OTA] >> Target instalasi firmware: " + folderAktif + "\n";
+  otaLog += "[OTA] >> Instalasi akan dilakukan di background setelah log ini tampil.\n";
+  
+  // Aktifkan flag agar eksekusi download dilakukan di dalam loop()
+  pendingOTAUpdate = true;
+  pendingOTAUrl = urlFirmware;
 
   Serial.println(otaLog);
   return otaLog;
@@ -170,11 +175,6 @@ void handleDoUpdate() {
   )rawliteral";
 
   server.send(200, "text/html", html);
-
-  if (hasilLog.indexOf("SUKSES") > 0) {
-    delay(2000);
-    ESP.restart();
-  }
 }
 
 // ========================================================================
@@ -201,6 +201,11 @@ void setup() {
   server.on("/cek_update", HTTP_GET, handleCekUpdate);
   server.on("/do_update", HTTP_GET, handleDoUpdate);
   server.begin();
+
+  // Aktifkan Task Watchdog Timer SETELAH WiFi Terhubung (Mencegah restart saat loading WiFi)
+  // Ini akan mereset ESP32 jika loop() (atau fungsi yang dipanggilnya) nge-hang
+  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true); 
+  esp_task_wdt_add(NULL); 
   
   // Untuk firmware "Installer", kita non-aktifkan pengecekan otomatis saat boot.
   // Instalasi hanya akan berjalan jika tombol di Web Dashboard ditekan.
@@ -209,6 +214,29 @@ void setup() {
 
 void loop() {
   server.handleClient(); // Jaga agar portal web tetap responsif
+
+  // Eksekusi update di background agar web dashboard bisa tampil lebih dulu
+  if (pendingOTAUpdate) {
+    pendingOTAUpdate = false;
+    delay(1000); // Beri jeda 1 detik agar halaman web terkirim
+    
+    Serial.println("\n[OTA-BACKGROUND] Memulai proses download firmware...");
+    WiFiClientSecure client;
+    client.setInsecure(); // Bebas SSL
+    
+    httpUpdate.rebootOnUpdate(false); // Atur manual restart
+    esp_task_wdt_delete(NULL); // Matikan WDT sementara
+    t_httpUpdate_return ret = httpUpdate.update(client, pendingOTAUrl);
+    esp_task_wdt_add(NULL); // Hidupkan WDT kembali
+    
+    if (ret == HTTP_UPDATE_OK) {
+      Serial.println("[OTA-BACKGROUND] >> INSTALASI SUKSES! ESP32 akan restart otomatis.");
+      delay(1000);
+      ESP.restart();
+    } else {
+      Serial.printf("[OTA-BACKGROUND] >> GAGAL INSTALASI: %s (%d)\n", httpUpdate.getLastErrorString().c_str(), httpUpdate.getLastError());
+    }
+  }
 
   // Timer: Otomatis cek update setiap beberapa jam (Sesuai konstanta UPDATE_INTERVAL_MS)
   static unsigned long lastCheck = 0;
