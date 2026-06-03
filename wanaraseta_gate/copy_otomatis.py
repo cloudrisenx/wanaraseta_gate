@@ -3,8 +3,8 @@ import os
 import shutil
 
 def copy_bin(source, target, env):
-    # Ambil lokasi file hasil build
-    bin_path = str(source[0].get_abspath())
+    # Ambil lokasi file hasil build (.bin ada di target, sedangkan .elf ada di source)
+    bin_path = str(target[0].get_abspath())
     
     # Dapatkan path lengkap dari folder src yang sedang aktif
     target_path = env.subst("$PROJECT_SRC_DIR")

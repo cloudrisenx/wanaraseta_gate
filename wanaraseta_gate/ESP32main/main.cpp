@@ -35,8 +35,9 @@ String savedApSSID = DEFAULT_AP_SSID;
 // ========================================================================
 // 2. FUNGSI OTA GITHUB
 // ========================================================================
-void cekUpdateGitHub() {
-  Serial.println("\n[OTA] Memeriksa update di cabang GitHub: main");
+String cekUpdateGitHub() {
+  String otaLog = "";
+  otaLog += "[OTA] Memeriksa update di cabang GitHub: main\n";
 
   // Rakit nama folder berdasarkan pilihan yang disimpan via Web Dashboard
   String folderPath = String(GITHUB_REPO) + "/" + folderAktif;
@@ -56,26 +57,30 @@ void cekUpdateGitHub() {
     String versiDiGitHub = http.getString();
     versiDiGitHub.trim();
 
-    Serial.printf("[OTA] Versi ESP32   : %s\n", APP_VERSION);
-    Serial.printf("[OTA] Versi GitHub  : %s\n", versiDiGitHub.c_str());
+    otaLog += "[OTA] Versi ESP32   : " + String(APP_VERSION) + "\n";
+    otaLog += "[OTA] Versi GitHub  : " + versiDiGitHub + "\n";
 
     if (versiDiGitHub != APP_VERSION && versiDiGitHub.length() > 0) {
-      Serial.println("[OTA] >> UPDATE DITEMUKAN! Sedang menyedot firmware...");
+      otaLog += "[OTA] >> UPDATE DITEMUKAN! Sedang menyedot firmware...\n";
 
+      httpUpdate.rebootOnUpdate(false); // Cegah restart otomatis agar log bisa dikirim ke web
       t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
 
       if (ret == HTTP_UPDATE_OK) {
-        Serial.println("[OTA] >> UPDATE SUKSES! ESP32 akan restart otomatis.");
+        otaLog += "[OTA] >> UPDATE SUKSES! ESP32 akan restart otomatis.\n";
       } else {
-        Serial.printf("[OTA] >> GAGAL UPDATE: %s (%d)\n", httpUpdate.getLastErrorString().c_str(), httpUpdate.getLastError());
+        otaLog += "[OTA] >> GAGAL UPDATE: " + httpUpdate.getLastErrorString() + " (" + String(httpUpdate.getLastError()) + ")\n";
       }
     } else {
-      Serial.println("[OTA] >> Firmware sudah paling baru. Aman terkendali.");
+      otaLog += "[OTA] >> Firmware sudah paling baru. Aman terkendali.\n";
     }
   } else {
-    Serial.printf("[OTA] >> Gagal menghubungi GitHub (HTTP: %d). Cek koneksi internet atau path folder.\n", httpCode);
+    otaLog += "[OTA] >> Gagal menghubungi GitHub (HTTP: " + String(httpCode) + "). Cek koneksi internet atau path folder.\n";
   }
   http.end();
+  
+  Serial.println(otaLog);
+  return otaLog;
 }
 
 // ========================================================================
@@ -155,9 +160,37 @@ void handleSaveFolder() {
 }
 
 void handleCekUpdate() {
-  server.send(200, "text/html", "<html><body style='background:#121212; color:#fff; text-align:center; padding:50px; font-family:Arial;'><h2 style='color:#00adb5;'>Menghubungi Server GitHub...</h2><p>Jika ada update, perangkat akan mati sesaat lalu restart otomatis.</p><a href='/' style='color:#ff9f43;'>Kembali ke Menu</a></body></html>");
-  delay(1000);
-  cekUpdateGitHub();
+  String hasilLog = cekUpdateGitHub();
+  
+  String html = R"rawliteral(
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <style>
+      body { background-color: #121212; color: #ffffff; font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+      .box { max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1e1e; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+      h2 { color: #00adb5; margin-bottom: 20px; }
+      pre { background-color: #000; padding: 15px; border-radius: 8px; text-align: left; overflow-x: auto; color: #00ff00; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
+      .btn-orange { background-color: #ff9f43; color: #121212; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; text-decoration: none; display: inline-block; margin-top: 20px; box-sizing: border-box;}
+    </style>
+  </head>
+  <body>
+    <div class='box'>
+      <h2>Hasil Proses OTA</h2>
+      <pre>)rawliteral" + hasilLog + R"rawliteral(</pre>
+      <a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a>
+    </div>
+  </body>
+  </html>
+  )rawliteral";
+
+  server.send(200, "text/html", html);
+
+  if (hasilLog.indexOf("SUKSES") > 0) {
+    delay(2000);
+    ESP.restart();
+  }
 }
 
 // ========================================================================
@@ -185,7 +218,9 @@ void setup() {
   server.begin();
 
   // Otomatis cek pembaruan firmware 1x saat alat baru menyala
-  cekUpdateGitHub();
+  if (cekUpdateGitHub().indexOf("SUKSES") > 0) {
+    ESP.restart();
+  }
 
   // Setup Pin LED sebagai Output
   pinMode(LED_PIN, OUTPUT);
@@ -197,7 +232,9 @@ void loop() {
   // Timer: Otomatis cek update setiap beberapa jam (Sesuai konstanta UPDATE_INTERVAL_MS)
   static unsigned long lastCheck = 0;
   if (millis() - lastCheck > UPDATE_INTERVAL_MS) { 
-    cekUpdateGitHub();
+    if (cekUpdateGitHub().indexOf("SUKSES") > 0) {
+      ESP.restart();
+    }
     lastCheck = millis();
   }
 
