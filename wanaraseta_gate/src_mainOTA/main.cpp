@@ -35,16 +35,16 @@ Preferences preferences;
 String folderAktif = "ESP32main";
 String savedApSSID = DEFAULT_AP_SSID;
 
-// Flag untuk menunda proses download agar web tidak nge-hang
-bool pendingOTAUpdate = false;
-String pendingOTAUrl = "";
-
 // ========================================================================
 // 2. FUNGSI OTA GITHUB
 // ========================================================================
-String cekUpdateGitHub() {
-  String otaLog = "";
-  otaLog += "[OTA] Memeriksa update di cabang GitHub: main\n";
+void cekUpdateGitHub(bool fromWeb = false) {
+  auto logMsg = [&](String msg) {
+    Serial.print(msg);
+    if (fromWeb) server.sendContent(msg);
+  };
+
+  logMsg("[OTA] Memeriksa update di cabang GitHub: main\n");
 
   // Rakit nama folder berdasarkan pilihan yang disimpan via Web Dashboard
   String folderPath = String(GITHUB_REPO) + "/" + folderAktif;
@@ -55,15 +55,25 @@ String cekUpdateGitHub() {
   WiFiClientSecure client;
   client.setInsecure(); // Bebas SSL
 
-  otaLog += "[OTA] >> Target instalasi firmware: " + folderAktif + "\n";
-  otaLog += "[OTA] >> Instalasi akan dilakukan di background setelah log ini tampil.\n";
+  logMsg("[OTA] >> Target instalasi firmware: " + folderAktif + "\n");
+  logMsg("[OTA] >> Sedang menyedot firmware...\n(Proses memakan waktu 1-2 menit, JANGAN TUTUP HALAMAN INI)\n");
   
-  // Aktifkan flag agar eksekusi download dilakukan di dalam loop()
-  pendingOTAUpdate = true;
-  pendingOTAUrl = urlFirmware;
-
-  Serial.println(otaLog);
-  return otaLog;
+  httpUpdate.rebootOnUpdate(false); // Atur manual restart
+  esp_task_wdt_delete(NULL); // Matikan WDT sementara
+  t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
+  esp_task_wdt_add(NULL); // Hidupkan WDT kembali
+  
+  if (ret == HTTP_UPDATE_OK) {
+    logMsg("\n[OTA] >> INSTALASI SUKSES! ESP32 akan restart otomatis.\n");
+    if (fromWeb) {
+      server.sendContent("</pre><br><a href='/' class='btn-orange'>KEMBALI</a></div></body></html>");
+      server.sendContent(""); // Sinyal end of chunk
+    }
+    delay(1000);
+    ESP.restart();
+  } else {
+    logMsg("\n[OTA] >> GAGAL INSTALASI: " + httpUpdate.getLastErrorString() + " (" + String(httpUpdate.getLastError()) + ")\n");
+  }
 }
 
 // ========================================================================
@@ -149,9 +159,10 @@ void handleCekUpdate() {
 }
 
 void handleDoUpdate() {
-  String hasilLog = cekUpdateGitHub();
-  
-  String html = R"rawliteral(
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "text/html", ""); // Mulai mode chunked live streaming
+
+  String htmlStart = R"rawliteral(
   <!DOCTYPE html>
   <html>
   <head>
@@ -167,14 +178,16 @@ void handleDoUpdate() {
   <body>
     <div class='box'>
       <h2>Hasil Proses Instalasi</h2>
-      <pre>)rawliteral" + hasilLog + R"rawliteral(</pre>
-      <a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a>
-    </div>
-  </body>
-  </html>
-  )rawliteral";
+      <pre>)rawliteral";
 
-  server.send(200, "text/html", html);
+  server.sendContent(htmlStart);
+  
+  // Eksekusi update dan streaming log ke web
+  cekUpdateGitHub(true);
+  
+  // Jika gagal, tutup tag HTML-nya
+  server.sendContent("</pre><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></div></body></html>");
+  server.sendContent(""); // Sinyal selesai HTTP
 }
 
 // ========================================================================
@@ -215,28 +228,8 @@ void setup() {
 void loop() {
   server.handleClient(); // Jaga agar portal web tetap responsif
 
-  // Eksekusi update di background agar web dashboard bisa tampil lebih dulu
-  if (pendingOTAUpdate) {
-    pendingOTAUpdate = false;
-    delay(1000); // Beri jeda 1 detik agar halaman web terkirim
-    
-    Serial.println("\n[OTA-BACKGROUND] Memulai proses download firmware...");
-    WiFiClientSecure client;
-    client.setInsecure(); // Bebas SSL
-    
-    httpUpdate.rebootOnUpdate(false); // Atur manual restart
-    esp_task_wdt_delete(NULL); // Matikan WDT sementara
-    t_httpUpdate_return ret = httpUpdate.update(client, pendingOTAUrl);
-    esp_task_wdt_add(NULL); // Hidupkan WDT kembali
-    
-    if (ret == HTTP_UPDATE_OK) {
-      Serial.println("[OTA-BACKGROUND] >> INSTALASI SUKSES! ESP32 akan restart otomatis.");
-      delay(1000);
-      ESP.restart();
-    } else {
-      Serial.printf("[OTA-BACKGROUND] >> GAGAL INSTALASI: %s (%d)\n", httpUpdate.getLastErrorString().c_str(), httpUpdate.getLastError());
-    }
-  }
+  // Beri makan Task Watchdog Timer agar tidak reset
+  esp_task_wdt_reset();
 
   // Timer: Otomatis cek update setiap beberapa jam (Sesuai konstanta UPDATE_INTERVAL_MS)
   static unsigned long lastCheck = 0;
