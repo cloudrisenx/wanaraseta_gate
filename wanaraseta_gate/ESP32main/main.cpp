@@ -10,7 +10,7 @@
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.2"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "1.3"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -22,6 +22,9 @@
 #define UPDATE_INTERVAL_MS  7200000             
 
 #define LED_PIN             2                   // Pin LED Bawaan ESP32 (Build-in LED)
+#define TOUCH_PIN           4                   // Pin Touch Sensor (T0)
+#define TOUCH_THRESHOLD     30                  // Batas deteksi sentuhan (biasanya < 40 jika disentuh)
+#define GATE_OPEN_MS        3000                // Lama gate terbuka (LED nyala) dalam milidetik (3 detik)
 
 // ========================================================================
 
@@ -249,12 +252,25 @@ void loop() {
   // MASUKKAN LOGIKA RFID, KONTROL GERBANG & EMQX DI SINI
   // ---------------------------------------------------------
 
-  // Logika Blink LED (Tanpa mengganggu portal Web / tanpa Delay)
-  static unsigned long lastBlink = 0;
-  static bool ledState = false;
-  if (millis() - lastBlink > 500) { 
-    lastBlink = millis();
-    ledState = !ledState;
-    digitalWrite(LED_PIN, ledState);
+  // Logika Simulasi Gerbang via Touch Sensor
+  static unsigned long gateOpenTime = 0;
+  static bool isGateOpen = false;
+
+  // Baca sensor sentuh (Touch0 ada di GPIO 4)
+  int touchValue = touchRead(TOUCH_PIN);
+
+  // Jika disentuh (nilai drop di bawah threshold) dan gerbang sedang tertutup
+  if (touchValue < TOUCH_THRESHOLD && !isGateOpen) {
+    Serial.printf("[SIMULASI] Sensor disentuh! Value: %d. Membuka gerbang...\n", touchValue);
+    isGateOpen = true;
+    gateOpenTime = millis();
+    digitalWrite(LED_PIN, HIGH); // LED Nyala (Gerbang Terbuka)
+  }
+
+  // Jika gerbang sedang terbuka dan waktunya (3 detik) sudah habis
+  if (isGateOpen && (millis() - gateOpenTime > GATE_OPEN_MS)) {
+    Serial.println("[SIMULASI] Waktu habis. Menutup gerbang...");
+    isGateOpen = false;
+    digitalWrite(LED_PIN, LOW); // LED Mati (Gerbang Tertutup)
   }
 }
