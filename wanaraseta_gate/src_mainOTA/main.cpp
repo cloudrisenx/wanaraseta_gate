@@ -35,45 +35,24 @@ String savedApSSID = DEFAULT_AP_SSID;
 // ========================================================================
 void cekUpdateGitHub() {
   Serial.println("\n[OTA] Memeriksa update di cabang GitHub: main");
-  
+
   // Rakit nama folder berdasarkan pilihan yang disimpan via Web Dashboard
   String folderPath = String(GITHUB_REPO) + "/" + folderAktif;
 
   // Rakit URL secara dinamis berdasarkan konfigurasi di atas
-  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/version.txt";
   String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/firmware.bin";
 
   WiFiClientSecure client;
   client.setInsecure(); // Bebas SSL
 
-  HTTPClient http;
-  http.begin(client, urlVersi);
-  int httpCode = http.GET();
+  Serial.println("[OTA] >> Memulai instalasi firmware dari: " + folderAktif);
+  t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
 
-  if (httpCode == HTTP_CODE_OK) {
-    String versiDiGitHub = http.getString();
-    versiDiGitHub.trim(); 
-
-    Serial.printf("[OTA] Versi ESP32   : %s\n", APP_VERSION);
-    Serial.printf("[OTA] Versi GitHub  : %s\n", versiDiGitHub.c_str());
-
-    if (versiDiGitHub != APP_VERSION && versiDiGitHub.length() > 0) {
-      Serial.println("[OTA] >> UPDATE DITEMUKAN! Sedang menyedot firmware...");
-      
-      t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
-
-      if (ret == HTTP_UPDATE_OK) {
-        Serial.println("[OTA] >> UPDATE SUKSES! ESP32 akan restart otomatis.");
-      } else {
-        Serial.printf("[OTA] >> GAGAL UPDATE: %s\n", httpUpdate.getLastErrorString().c_str());
-      }
-    } else {
-      Serial.println("[OTA] >> Firmware sudah paling baru. Aman terkendali.");
-    }
+  if (ret == HTTP_UPDATE_OK) {
+    Serial.println("[OTA] >> INSTALASI SUKSES! ESP32 akan restart otomatis.");
   } else {
-    Serial.println("[OTA] >> Gagal menghubungi GitHub. Cek koneksi internet.");
+    Serial.printf("[OTA] >> GAGAL INSTALASI: %s (%d)\n", httpUpdate.getLastErrorString().c_str(), httpUpdate.getLastError());
   }
-  http.end();
 }
 
 // ========================================================================
@@ -153,7 +132,7 @@ void handleSaveFolder() {
 }
 
 void handleCekUpdate() {
-  server.send(200, "text/html", "<html><body style='background:#121212; color:#fff; text-align:center; padding:50px; font-family:Arial;'><h2 style='color:#00adb5;'>Menghubungi Server GitHub...</h2><p>Jika ada update, perangkat akan mati sesaat lalu restart otomatis.</p><a href='/' style='color:#ff9f43;'>Kembali ke Menu</a></body></html>");
+  server.send(200, "text/html", "<html><body style='background:#121212; color:#fff; text-align:center; padding:50px; font-family:Arial;'><h2 style='color:#00adb5;'>Memulai Instalasi...</h2><p>Perangkat akan mengunduh firmware dan restart otomatis. Mohon tunggu.</p><a href='/' style='color:#ff9f43;'>Kembali ke Menu</a></body></html>");
   delay(1000);
   cekUpdateGitHub();
 }
@@ -181,9 +160,10 @@ void setup() {
   server.on("/save_folder", HTTP_POST, handleSaveFolder);
   server.on("/cek_update", HTTP_GET, handleCekUpdate);
   server.begin();
-
-  // Otomatis cek pembaruan firmware 1x saat alat baru menyala
-  cekUpdateGitHub();
+  
+  // Untuk firmware "Installer", kita non-aktifkan pengecekan otomatis saat boot.
+  // Instalasi hanya akan berjalan jika tombol di Web Dashboard ditekan.
+  // cekUpdateGitHub(); 
 }
 
 void loop() {
