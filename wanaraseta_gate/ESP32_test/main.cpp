@@ -15,7 +15,7 @@
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.2"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "1.3"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -38,7 +38,7 @@
 #define RST_PIN             22
 #define SS_PIN              5
 
-const char* mqtt_server     = "192.168.4.50";   // IP Server EMQX Lokal sesuai API Contract
+const char* mqtt_server     = "192.168.137.1";  // IP Gateway Hotspot Windows (cek via cmd -> ipconfig)
 const int   mqtt_port       = 1883;             // Port EMQX (biasanya 1883)
 const char* mqtt_user       = "Gate_02";        // Menggunakan Gate_02 sebagai username
 const char* mqtt_pass       = "11223344";       // Password baru
