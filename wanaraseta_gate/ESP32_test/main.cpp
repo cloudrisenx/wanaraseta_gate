@@ -15,7 +15,7 @@
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.1"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "1.2"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -320,7 +320,20 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 void reconnectMQTT() {
   // Selama belum terhubung, coba terus
   while (!mqttClient.connected()) {
-    Serial.print("[MQTT] Menghubungi EMQX Broker...");
+    Serial.printf("[MQTT] Melakukan TCP Ping ke %s:%d...\n", mqtt_server, mqtt_port);
+    
+    // Cek apakah server dan port 1883 bisa dijangkau
+    if (!espClient.connect(mqtt_server, mqtt_port)) {
+      Serial.println("[MQTT] ERROR: Ping Gagal! Server tidak dapat dijangkau.");
+      Serial.println("[MQTT] Saran: Cek IP, apakah EMQX berjalan, atau UFW/Firewall memblokir port 1883.");
+      esp_task_wdt_reset();
+      delay(5000);
+      continue; // Lewati sisa loop dan coba ping lagi
+    }
+    espClient.stop(); // Tutup koneksi TCP sementara karena ping sukses
+    Serial.println("[MQTT] Ping Sukses! Server aktif.");
+
+    Serial.print("[MQTT] Melakukan Autentikasi ke EMQX Broker...");
     if (mqttClient.connect(mqtt_client_id, mqtt_user, mqtt_pass)) {
       Serial.println(" Terhubung!");
       
