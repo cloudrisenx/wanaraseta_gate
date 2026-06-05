@@ -15,7 +15,7 @@
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.3"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "1.1"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -35,10 +35,20 @@
 // ========================================================================
 // KONFIGURASI RFID & MQTT
 // ========================================================================
-#define RST_PIN             22
-#define SS_PIN              5
+// Panduan Wiring MFRC522 ke ESP32 DevKit V1:
+// SDA / SS    -> GPIO 21
+// SCK / SCLK  -> GPIO 18
+// MOSI        -> GPIO 23
+// MISO        -> GPIO 19
+// IRQ         -> (Tidak perlu disambung)
+// RST         -> GPIO 22
+// GND         -> GND
+// 3.3V        -> 3V3 (PENTING: JANGAN KE 5V/VIN KARENA BISA RUSAK!)
 
-const char* mqtt_server     = "192.168.137.1";  // IP Gateway Hotspot Windows (cek via cmd -> ipconfig)
+#define SS_PIN              21
+#define RST_PIN             22
+
+const char* mqtt_server     = "192.168.4.50";  // IP Gateway Hotspot Windows (cek via cmd -> ipconfig)
 const int   mqtt_port       = 1883;             // Port EMQX (biasanya 1883)
 const char* mqtt_user       = "Gate_02";        // Menggunakan Gate_02 sebagai username
 const char* mqtt_pass       = "11223344";       // Password baru
@@ -326,8 +336,11 @@ void reconnectMQTT() {
     if (!espClient.connect(mqtt_server, mqtt_port)) {
       Serial.println("[MQTT] ERROR: Ping Gagal! Server tidak dapat dijangkau.");
       Serial.println("[MQTT] Saran: Cek IP, apakah EMQX berjalan, atau UFW/Firewall memblokir port 1883.");
-      esp_task_wdt_reset();
-      delay(5000);
+      // Pecah delay 5 detik agar Watchdog Timer (WDT) tidak reset ESP32
+      for(int i = 0; i < 5; i++) {
+        delay(1000);
+        esp_task_wdt_reset();
+      }
       continue; // Lewati sisa loop dan coba ping lagi
     }
     espClient.stop(); // Tutup koneksi TCP sementara karena ping sukses
@@ -351,9 +364,11 @@ void reconnectMQTT() {
       Serial.print(mqttClient.state());
       Serial.println(" coba lagi dalam 5 detik...");
       
-      // Wajib reset WDT agar tidak restart saat gagal konek berturut-turut
-      esp_task_wdt_reset();
-      delay(5000);
+      // Pecah delay 5 detik agar Watchdog Timer (WDT) tidak reset ESP32
+      for(int i = 0; i < 5; i++) {
+        delay(1000);
+        esp_task_wdt_reset();
+      }
     }
   }
 }
@@ -447,6 +462,7 @@ void loop() {
     Serial.println("[MQTT] Data terkirim: " + payload);
 
     mfrc522.PICC_HaltA(); // Hentikan pembacaan kartu yang sama (mencegah spam data berulang)
+    mfrc522.PCD_StopCrypto1(); // WAJIB DITAMBAHKAN: Hentikan enkripsi pada sensor agar siap membaca kartu berikutnya
   }
 
   // Tangani timer penutupan gerbang otomatis

@@ -9,10 +9,16 @@
 
 | # | Topik | Keputusan |
 |---|-------|-----------|
-| A | Firmware ESP32 | **Dipegang vendor/teknisi hardware** — tim ini hanya mendefinisikan API contract. Tidak ada kode firmware yang ditulis di sini. |
-| B | API gate endpoint | **`gate-service` terpisah (port 5004)** — bukan bagian dari `pos-service`. Dipisah karena auth berbeda (device_token, bukan JWT) dan latency kritis untuk hardware. |
-| C | Notifikasi admin | **n8n + Telegram** — `gate-service` POST ke webhook n8n, n8n forward ke Telegram bot admin. Flask tidak kirim Telegram langsung. Tabel `admin_notifications` tetap ada sebagai audit trail di DB. |
-| D | Database engine | **PostgreSQL** (sesuai SOT) — sintaks MySQL di schema lama sudah dikonversi ke PostgreSQL + Prisma. |
+| A | Firmware ESP32 | **Dipegang vendor/teknisi hardware** — tim ini hanya mendefinisikan API contract (MQTT topic, payload format, auth EMQX). Tidak ada kode firmware yang ditulis di sini. |
+| B | Protokol komunikasi hardware | **MQTT via EMQX** — ESP32 tidak hit Flask secara HTTP. Semua komunikasi melalui EMQX broker. gate-service adalah MQTT subscriber/publisher, bukan HTTP server untuk ESP32. |
+| C | Service gate terpisah | **`gate-service` (port 5004)** — MQTT listener + business logic gate. `pos-service` (port 5003) untuk web/HTTP saja. Dipisah karena lifecycle MQTT berbeda dengan HTTP. |
+| D | Auth ESP32 | **Dihandle EMQX** di level koneksi MQTT — setiap ESP32 punya clientId + username + password di EMQX. Tidak ada device_token di payload. |
+| E | Notifikasi admin | **n8n + Telegram** — gate-service POST ke webhook n8n setelah proses MQTT scan. Tabel `admin_notifications` tetap ada sebagai audit trail di DB. |
+| F | Database engine | **PostgreSQL** (sesuai SOT) — sintaks MySQL di schema lama sudah dikonversi ke PostgreSQL + Prisma. |
+| G | Format token QR Guest | `ws-mmyyXXNN` — prefix ws, bulan-tahun 2 digit, 2 alfabet random, 2 numerik random. Contoh: `ws-0626AB12`. Total 11 karakter. |
+| H | Generate & cetak gelang | Admin generate N token via dashboard → overlay QR ke template desain marketing (PNG/SVG) → export PDF A3 → cetak massal. Tracking via tabel `ticket_batches`. |
+| I | Aktivasi QR | Flow unactivated → active tetap dipertahankan. Saat aktivasi, kasir **mengisi `valid_until`** (default hari ini, bisa diisi tanggal lebih lanjut). Kolom `valid_date` diganti menjadi `valid_until`. |
+| J | Validasi gate QR | Cek `status = active` AND `CURRENT_DATE <= valid_until` AND `used_at IS NULL`. Hapus cek `valid_date = today`. |
 
 ---
 
@@ -24,12 +30,14 @@ Wanara Seta adalah wahana air yang membutuhkan sistem akses gate modern dan ekos
 
 ## Tipe Akses (3 jenis)
 
-### 1. QR Guest (Harian)
-- **Media:** Kertas QR code — dicetak massal sebelumnya
-- **Aktivasi:** Kasir scan QR saat pengunjung membeli → status `unactivated` → `active`, `valid_date` = hari ini
+### 1. QR Guest (Gelang Harian)
+- **Media:** Gelang kertas/tyvek dengan QR code — dicetak massal via dashboard
+- **Token format:** `ws-mmyyXXNN` (contoh: `ws-0626AB12`) — 11 karakter, QR Version 1 ECC-L
+- **Generate:** Admin generate N token → overlay QR ke template desain marketing → export PDF A3 → cetak → stok di Accounting (`ticket_batches`)
+- **Aktivasi:** Kasir scan gelang dari stok → isi form `valid_until` (default hari ini, bisa diubah) → status `unactivated` → `active`
 - **Gate:** Sekali pakai — setelah berhasil membuka gate → status langsung `used`
-- **Berlaku:** Hanya pada `valid_date` (tanggal aktivasi kasir)
-- **Tidak jadi datang:** HANGUS — tidak ada reschedule, tidak ada refund
+- **Berlaku:** Sampai `valid_until` — melewati tanggal ini, APScheduler auto-expire tengah malam
+- **Tidak jadi datang:** HANGUS setelah `valid_until` — tidak ada reschedule, tidak ada refund
 - **Transaksi outlet:** ❌ Tidak bisa — tidak punya saldo
 - **Identitas:** Anonim
 
@@ -64,52 +72,62 @@ Wanara Seta adalah wahana air yang membutuhkan sistem akses gate modern dan ekos
 
 ### QR Guest
 1. Tiket QR dicetak massal → status `unactivated`
-2. Pengunjung beli di loket → kasir scan → status `active`, `valid_date` = hari ini
-3. Pengunjung tap QR di gate
-4. Validasi: `active`? `valid_date` = hari ini? `used_at` = NULL?
-5. Jika valid → buka gate → status `used`, `used_at` = NOW()
-6. QR tidak bisa digunakan kembali
+2. Pengunjung beli di loket → kasir scan di web kasir → pos-service update `active`, `valid_date` = hari ini
+3. Pengunjung tap QR di gate → ESP32 baca token
+4. ESP32 PUBLISH `wanara/gate/{id}/scan { token, ts }` → EMQX → gate-service
+5. gate-service validasi di pos_db → UPDATE `used`, INSERT gate_logs → PUBLISH command `open`
+6. ESP32 terima command via MQTT → buka relay gate
 
 ### RFID Member
-1. Daftar member → admin issued gelang RFID
-2. Topup saldo di pos utama atau outlet manapun
-3. Tap gelang di gate → cek saldo ≥ harga masuk → debit → buka gate
-4. Di dalam wahana: tap gelang di outlet → debit saldo → transaksi tercatat
-5. Sisa saldo tetap tersimpan untuk kunjungan berikutnya
+1. Daftar member → admin issued gelang RFID di dashboard
+2. Topup saldo di pos utama atau outlet (via pos-service HTTP, bukan MQTT)
+3. Tap gelang di gate → ESP32 PUBLISH scan → gate-service cek saldo di pos_db
+4. Saldo cukup → debit atomik (UPDATE + INSERT wanara_transactions + INSERT gate_logs) → PUBLISH command `open`
+5. Di dalam wahana: tap gelang di outlet → alur terpisah via pos-service (HTTP, bukan MQTT)
+6. Sisa saldo tetap tersimpan
 
 ### RFID Master
 1. Staff tap kartu/gelang master di gate
-2. ESP32 cek whitelist lokal (tidak perlu tunggu server)
-3. Jika token ada di whitelist → buka gate langsung
-4. ESP32 POST ke `gate-service` (jika online) → insert `gate_logs` + `admin_notifications`
-5. gate-service POST ke webhook n8n → n8n kirim notifikasi Telegram ke admin
+2. ESP32 cek whitelist lokal (LittleFS) — tidak perlu tunggu EMQX/server
+3. Token ada → buka relay gate langsung
+4. Jika EMQX online → ESP32 PUBLISH scan → gate-service INSERT gate_logs + INSERT admin_notifications + POST webhook n8n → Telegram
+5. Jika EMQX offline → log disimpan memori ESP32, di-sync via MQTT topic `offline-log` saat reconnect
 
-### Logika Validasi Gate
+### Logika Validasi Gate (dijalankan gate-service setelah terima MQTT)
+
 ```
-SCAN token
+ESP32 PUBLISH wanara/gate/{gate_id}/scan { token, ts }
+  │
+  ▼
+gate-service (MQTT subscriber) terima pesan
   │
   ├─ Ada di rfid_masters & active?
-  │    → GRANTED (bypass semua validasi)
   │    → UPDATE last_used_at = NOW()
   │    → INSERT gate_logs (is_master_used: true)
   │    → INSERT admin_notifications
+  │    → POST webhook n8n → Telegram admin
+  │    → PUBLISH wanara/gate/{id}/command { action:"open" }
   │
   ├─ type = qr_guest?
-  │    → unactivated?         DENIED 'not_activated'
-  │    → used?                DENIED 'already_used'
-  │    → expired?             DENIED 'expired'
-  │    → valid_date != today? DENIED 'wrong_date'
+  │    → unactivated?         PUBLISH { action:"deny", reason:"not_activated" }
+  │    → used?                PUBLISH { action:"deny", reason:"already_used" }
+  │    → expired?             PUBLISH { action:"deny", reason:"expired" }
+  │    → valid_date != today? PUBLISH { action:"deny", reason:"wrong_date" }
   │    → GRANTED
   │         UPDATE status='used', used_at=NOW()
   │         INSERT gate_logs
+  │         PUBLISH { action:"open" }
   │
   └─ type = rfid_member?
-       → blocked?             DENIED 'blocked'
-       → saldo < harga?       DENIED 'insufficient_balance'
-       → GRANTED
+       → blocked?             PUBLISH { action:"deny", reason:"blocked" }
+       → saldo < harga?       PUBLISH { action:"deny", reason:"insufficient_balance" }
+       → GRANTED (1 DB transaction atomik)
             UPDATE saldo = saldo - harga_masuk
-            INSERT transactions
+            INSERT wanara_transactions
             INSERT gate_logs
+            PUBLISH { action:"open" }
+
+ESP32 (subscribe wanara/gate/{id}/command) → buka/tutup relay
 ```
 
 ---
