@@ -48,11 +48,12 @@
 #define SS_PIN              21
 #define RST_PIN             22
 
-const char* mqtt_server     = "192.168.4.50";  // IP Gateway Hotspot Windows (cek via cmd -> ipconfig)
-const int   mqtt_port       = 1883;             // Port EMQX (biasanya 1883)
-const char* mqtt_user       = "Gate_02";        // Menggunakan Gate_02 sebagai username
-const char* mqtt_pass       = "11223344";       // Password baru
-const char* mqtt_client_id  = "Gate_02";        // Diubah menjadi Gate 2
+// Variabel MQTT (Nilai default, akan ditimpa oleh pengaturan dari Web Dashboard)
+String mqtt_server     = "192.168.4.50";
+int    mqtt_port       = 1883;
+String mqtt_user       = "gate_esp32_01";
+String mqtt_pass       = "11223344";
+String mqtt_client_id  = "gate_esp32_01";
 
 // ========================================================================
 
@@ -115,10 +116,14 @@ void cekUpdateGitHub(bool fromWeb = false) {
   
   if (doUpdate) {
     httpUpdate.rebootOnUpdate(false); // Atur manual restart
-    esp_task_wdt_delete(NULL); // Matikan WDT sementara
-    t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
-    esp_task_wdt_add(NULL); // Hidupkan WDT kembali
     
+    // Cara aman mematikan WDT di berbagai versi Core
+    esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+
+    t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
+    
+    esp_task_wdt_add(xTaskGetCurrentTaskHandle()); 
+
     if (ret == HTTP_UPDATE_OK) {
       logMsg("\n[OTA] >> UPDATE SUKSES! ESP32 akan restart otomatis.\n");
       if (fromWeb) {
@@ -148,8 +153,8 @@ void handleRoot() {
       .box { max-width: 420px; margin: 0 auto; padding: 25px; background-color: #1e1e1e; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
       h2 { color: #00adb5; margin-bottom: 5px; }
       .info-text { color: #aaaaaa; font-size: 14px; margin-bottom: 25px; }
-      select, input[type='submit'] { width: 100%; padding: 12px; margin-top: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; }
-      select { background-color: #252525; color: white; border: 1px solid #444; }
+      select, input[type='submit'], input[type='text'], input[type='number'], input[type='password'] { width: 100%; padding: 12px; margin-top: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; box-sizing: border-box; }
+      select, input[type='text'], input[type='number'], input[type='password'] { background-color: #252525; color: white; border: 1px solid #444; font-weight: normal; cursor: auto; margin-top: 5px; }
       .btn-orange { background-color: #ff9f43; color: #121212; }
       .btn-blue { background-color: #00adb5; color: #121212; margin-top: 25px; }
       hr { border-color: #333; margin: 20px 0; }
@@ -164,7 +169,7 @@ void handleRoot() {
       </div>
 
       <hr>
-      <h3>Pengaturan Mesin/Board (Firmware Folder)</h3>
+      <h3>Pengaturan Mesin/Board</h3>
       <form action='/save_folder' method='POST'>
         <select name='folder_name'>
           <option value='ESP32main' {{SEL_ESP32MAIN}}>Mesin ESP32 (ESP32main)</option>
@@ -176,6 +181,18 @@ void handleRoot() {
         <input type='submit' class='btn-orange' value='SIMPAN PENGATURAN & RESTART'>
       </form>
 
+      <hr>
+      <h3>Pengaturan MQTT Broker</h3>
+      <form action='/save_mqtt' method='POST'>
+        <input type='text' name='mqtt_server' placeholder='IP Server (contoh: 192.168.4.50)' value='{{MQTT_SERVER}}' required>
+        <input type='number' name='mqtt_port' placeholder='Port (contoh: 1883)' value='{{MQTT_PORT}}' required>
+        <input type='text' name='mqtt_user' placeholder='Username MQTT' value='{{MQTT_USER}}' required>
+        <input type='password' name='mqtt_pass' placeholder='Password MQTT' value='{{MQTT_PASS}}'>
+        <input type='text' name='mqtt_client_id' placeholder='Client ID (contoh: Gate_02)' value='{{MQTT_CLIENT_ID}}' required>
+        <input type='submit' class='btn-orange' value='SIMPAN MQTT & RESTART'>
+      </form>
+
+      <hr>
       <form action='/cek_update' method='GET'>
         <input type='submit' class='btn-blue' value='CEK UPDATE GITHUB SEKARANG'>
       </form>
@@ -192,6 +209,12 @@ void handleRoot() {
   html.replace("{{SEL_WT32MAIN}}", folderAktif == "WT32main" ? "selected" : "");
   html.replace("{{SEL_WT32TEST}}", folderAktif == "WT32_test" ? "selected" : "");
   html.replace("{{SEL_SRCMAINOTA}}", folderAktif == "src_mainOTA" ? "selected" : "");
+  
+  html.replace("{{MQTT_SERVER}}", mqtt_server);
+  html.replace("{{MQTT_PORT}}", String(mqtt_port));
+  html.replace("{{MQTT_USER}}", mqtt_user);
+  html.replace("{{MQTT_PASS}}", mqtt_pass);
+  html.replace("{{MQTT_CLIENT_ID}}", mqtt_client_id);
 
   server.send(200, "text/html", html);
 }
@@ -205,6 +228,31 @@ void handleSaveFolder() {
 
     String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Target mesin diubah ke: " + newFolder + "</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
     server.send(200, "text/html", html);
+    esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+    delay(2000);
+    ESP.restart();
+  }
+}
+
+void handleSaveMqtt() {
+  if (server.hasArg("mqtt_server")) {
+    mqtt_server = server.arg("mqtt_server");
+    mqtt_port = server.arg("mqtt_port").toInt();
+    mqtt_user = server.arg("mqtt_user");
+    mqtt_pass = server.arg("mqtt_pass");
+    mqtt_client_id = server.arg("mqtt_client_id");
+
+    preferences.begin("gate_config", false);
+    preferences.putString("mqtt_server", mqtt_server);
+    preferences.putInt("mqtt_port", mqtt_port);
+    preferences.putString("mqtt_user", mqtt_user);
+    preferences.putString("mqtt_pass", mqtt_pass);
+    preferences.putString("mqtt_client_id", mqtt_client_id);
+    preferences.end();
+
+    String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Pengaturan MQTT Disimpan!</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
+    server.send(200, "text/html", html);
+    esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
     delay(2000);
     ESP.restart();
   }
@@ -288,38 +336,30 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
 
   String topicStr = String(topic);
-  String responseTopic = String("wanara/gate/") + mqtt_client_id + "/response";
-  String commandTopic = String("wanara/gate/") + mqtt_client_id + "/command";
+  String resTopic = "gate/" + mqtt_client_id + "/result";
+  String cmdTopic = "gate/" + mqtt_client_id + "/command";
 
-  // Skenario 1: Menerima Response dari Scan
-  if (topicStr == responseTopic) {
-    String result = doc["result"];
-    if (result == "granted") {
+  // Skenario 1: Cek status validitas kartu
+  if (topicStr == resTopic) {
+    String status = doc["status"];
+    if (status == "valid") {
       Serial.println("[AKSES] Diberikan! Pesan: " + doc["message"].as<String>());
       openGate(); // Buka gerbang
-    } else if (result == "denied") {
-      Serial.println("[AKSES] Ditolak! Alasan: " + doc["reason"].as<String>());
-      // Jangan buka gerbang, bisa tambahkan buzzer error di sini
+    } else if (status == "invalid") {
+      Serial.println("[AKSES] Ditolak! Alasan: " + doc["message"].as<String>());
     }
   } 
-  // Skenario 2: Menerima Command Manual (Buka Gerbang / Reboot)
-  else if (topicStr == commandTopic) {
+  // Skenario 2: Command Manual
+  else if (topicStr == cmdTopic) {
     String cmd = doc["command"];
     if (cmd == "open_gate") {
       Serial.println("[COMMAND] Perintah Override: Buka Gerbang!");
       openGate();
     } else if (cmd == "reboot") {
       Serial.println("[COMMAND] Perintah Reboot dari server. Restarting...");
+      esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
       delay(1000);
       ESP.restart();
-    }
-  }
-  // Skenario 3: Menerima Update Whitelist
-  else if (topicStr == "wanara/gate/whitelist/update") {
-    String action = doc["action"];
-    if (action == "refresh_whitelist") {
-      Serial.println("[WHITELIST] Perintah Refresh Whitelist diterima.");
-      // TODO: Panggil fungsi GET /api/gate/master-whitelist di sini nanti
     }
   }
 }
@@ -327,49 +367,34 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 // ========================================================================
 // FUNGSI MQTT
 // ========================================================================
-void reconnectMQTT() {
-  // Selama belum terhubung, coba terus
-  while (!mqttClient.connected()) {
-    Serial.printf("[MQTT] Melakukan TCP Ping ke %s:%d...\n", mqtt_server, mqtt_port);
-    
-    // Cek apakah server dan port 1883 bisa dijangkau
-    if (!espClient.connect(mqtt_server, mqtt_port)) {
-      Serial.println("[MQTT] ERROR: Ping Gagal! Server tidak dapat dijangkau.");
-      Serial.println("[MQTT] Saran: Cek IP, apakah EMQX berjalan, atau UFW/Firewall memblokir port 1883.");
-      // Pecah delay 5 detik agar Watchdog Timer (WDT) tidak reset ESP32
-      for(int i = 0; i < 5; i++) {
-        delay(1000);
-        esp_task_wdt_reset();
-      }
-      continue; // Lewati sisa loop dan coba ping lagi
-    }
-    espClient.stop(); // Tutup koneksi TCP sementara karena ping sukses
-    Serial.println("[MQTT] Ping Sukses! Server aktif.");
+unsigned long lastMqttReconnectAttempt = 0;
 
-    Serial.print("[MQTT] Melakukan Autentikasi ke EMQX Broker...");
-    if (mqttClient.connect(mqtt_client_id, mqtt_user, mqtt_pass)) {
-      Serial.println(" Terhubung!");
-      
-      // Subscribe ke topik sesuai API Contract
-      String responseTopic = String("wanara/gate/") + mqtt_client_id + "/response";
-      String commandTopic = String("wanara/gate/") + mqtt_client_id + "/command";
-      
-      mqttClient.subscribe(responseTopic.c_str());
-      mqttClient.subscribe(commandTopic.c_str());
-      mqttClient.subscribe("wanara/gate/whitelist/update");
-      
-      Serial.println("[MQTT] Berhasil subscribe ke topik response & command.");
-    } else {
-      Serial.print(" Gagal, rc=");
-      Serial.print(mqttClient.state());
-      Serial.println(" coba lagi dalam 5 detik...");
-      
-      // Pecah delay 5 detik agar Watchdog Timer (WDT) tidak reset ESP32
-      for(int i = 0; i < 5; i++) {
-        delay(1000);
-        esp_task_wdt_reset();
-      }
-    }
+void reconnectMQTT() {
+  Serial.printf("[MQTT] Melakukan TCP Ping ke %s:%d...\n", mqtt_server.c_str(), mqtt_port);
+  
+  // Cek apakah server dan port 1883 bisa dijangkau
+  if (!espClient.connect(mqtt_server.c_str(), mqtt_port)) {
+    Serial.println("[MQTT] ERROR: Ping Gagal! Server tidak dapat dijangkau.");
+    Serial.println("[MQTT] Saran: Cek IP, apakah EMQX berjalan, atau UFW/Firewall memblokir port 1883.");
+    return; // Langsung keluar agar Web Dashboard tetap responsif
+  }
+  espClient.stop(); // Tutup koneksi TCP sementara karena ping sukses
+  Serial.println("[MQTT] Ping Sukses! Server aktif.");
+
+  Serial.print("[MQTT] Melakukan Autentikasi ke EMQX Broker...");
+  if (mqttClient.connect(mqtt_client_id.c_str(), mqtt_user.c_str(), mqtt_pass.c_str())) {
+    Serial.println(" Terhubung!");
+    
+    String resTopic = "gate/" + mqtt_client_id + "/result";
+    String cmdTopic = "gate/" + mqtt_client_id + "/command";
+    
+    mqttClient.subscribe(resTopic.c_str());
+    mqttClient.subscribe(cmdTopic.c_str());
+    
+    Serial.println("[MQTT] Berhasil subscribe ke topik result & command.");
+  } else {
+    Serial.print(" Gagal, rc=");
+    Serial.println(mqttClient.state());
   }
 }
 
@@ -384,6 +409,13 @@ void setup() {
   preferences.begin("gate_config", true);
   folderAktif = preferences.getString("ota_folder", "ESP32main");
   savedApSSID = preferences.getString("ap_ssid", DEFAULT_AP_SSID); // Mengambil dari const di atas
+
+  // Load konfigurasi MQTT (Jika tidak ada, fallback ke nilai variabel global)
+  mqtt_server = preferences.getString("mqtt_server", mqtt_server);
+  mqtt_port = preferences.getInt("mqtt_port", mqtt_port);
+  mqtt_user = preferences.getString("mqtt_user", mqtt_user);
+  mqtt_pass = preferences.getString("mqtt_pass", mqtt_pass);
+  mqtt_client_id = preferences.getString("mqtt_client_id", mqtt_client_id);
   preferences.end();
 
   // Memulai WiFi Manager (Jika gagal konek, panggil AP dan Password dari const di atas)
@@ -394,6 +426,7 @@ void setup() {
   // Routing Halaman Web
   server.on("/", handleRoot);
   server.on("/save_folder", HTTP_POST, handleSaveFolder);
+  server.on("/save_mqtt", HTTP_POST, handleSaveMqtt);
   server.on("/cek_update", HTTP_GET, handleCekUpdate);
   server.on("/do_update", HTTP_GET, handleDoUpdate);
   server.begin();
@@ -404,12 +437,21 @@ void setup() {
   Serial.println("[RFID] Sensor MFRC522 Siap.");
 
   // Setup MQTT Broker
-  mqttClient.setServer(mqtt_server, mqtt_port);
+  mqttClient.setServer(mqtt_server.c_str(), mqtt_port);
   mqttClient.setCallback(mqttCallback); // Daftarkan fungsi callback
 
   // Aktifkan Task Watchdog Timer SETELAH WiFi Terhubung (Mencegah restart saat loading WiFi)
-  // Ini akan mereset ESP32 jika loop() (atau fungsi yang dipanggilnya) nge-hang
-  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true); 
+  #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    esp_task_wdt_config_t twdt_config = {
+        .timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
+        .idle_core_mask = 0,
+        .trigger_panic = true
+    };
+    esp_task_wdt_reconfigure(&twdt_config);
+  #else
+    esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true); 
+  #endif
+  
   esp_task_wdt_add(NULL); 
 
   // Auto cek pembaruan saat boot dimatikan sesuai permintaan
@@ -429,9 +471,14 @@ void loop() {
   // Jaga koneksi MQTT tetap hidup
   if (WiFi.status() == WL_CONNECTED) {
     if (!mqttClient.connected()) {
-      reconnectMQTT();
+      // Coba sambung ulang setiap 5 detik tanpa memblokir sistem
+      if (millis() - lastMqttReconnectAttempt > 5000) {
+        lastMqttReconnectAttempt = millis();
+        reconnectMQTT();
+      }
+    } else {
+      mqttClient.loop();
     }
-    mqttClient.loop();
   }
 
   // Timer OTA otomatis dimatikan: update HANYA saat diklik dari Web Dashboard
@@ -446,23 +493,38 @@ void loop() {
   // ---------------------------------------------------------
 
   // Logika Pembacaan RFID
+  static unsigned long lastRFIDReadTime = 0;
+
   if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
-    String rfidUid = "";
-    for (byte i = 0; i < mfrc522.uid.size; i++) {
-      rfidUid += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
-      rfidUid += String(mfrc522.uid.uidByte[i], HEX);
+    if (millis() - lastRFIDReadTime > 1000) { // Cooldown 1 detik tanpa memblokir sistem
+      String rfidUid = "";
+      for (byte i = 0; i < mfrc522.uid.size; i++) {
+        rfidUid += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
+        rfidUid += String(mfrc522.uid.uidByte[i], HEX);
+      }
+      rfidUid.toUpperCase();
+      Serial.println("[RFID] Kartu Terdeteksi! UID: " + rfidUid);
+
+      // Cek apakah ini Kartu Master Hardcode (Bypass akses offline)
+      if (rfidUid == "A166C820") {
+        Serial.println("[MASTER] Kartu Master dikenali! Buka gerbang langsung tanpa MQTT.");
+        openGate();
+        mfrc522.PICC_HaltA();
+        mfrc522.PCD_StopCrypto1();
+      } else {
+        // Kirim Payload ke EMQX Broker (Sesuai Requirement 1 & 2)
+        String payload = "{\"rfid\":\"" + rfidUid + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
+        String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
+        
+        mqttClient.publish(pubTopic.c_str(), payload.c_str());
+        Serial.println("[MQTT] Data terkirim ke " + pubTopic + ": " + payload);
+        
+        mfrc522.PICC_HaltA();
+        mfrc522.PCD_StopCrypto1();
+      }
+
+      lastRFIDReadTime = millis();
     }
-    rfidUid.toUpperCase();
-    Serial.println("[RFID] Kartu Terdeteksi! UID: " + rfidUid);
-
-    // Kirim Payload ke EMQX Broker melalui MQTT sesuai API Contract Bab 3.1
-    String payload = "{\"token\":\"" + rfidUid + "\", \"device_id\":\"" + String(mqtt_client_id) + "\"}";
-    
-    mqttClient.publish("wanara/gate/scan/request", payload.c_str());
-    Serial.println("[MQTT] Data terkirim: " + payload);
-
-    mfrc522.PICC_HaltA(); // Hentikan pembacaan kartu yang sama (mencegah spam data berulang)
-    mfrc522.PCD_StopCrypto1(); // WAJIB DITAMBAHKAN: Hentikan enkripsi pada sensor agar siap membaca kartu berikutnya
   }
 
   // Tangani timer penutupan gerbang otomatis

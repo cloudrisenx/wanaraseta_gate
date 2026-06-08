@@ -6,3 +6,7 @@
 
 # Mengabaikan folder hasil generate QR code
 qr*/
+
+# Mengabaikan folder tambahan
+Main/
+kioksweb/

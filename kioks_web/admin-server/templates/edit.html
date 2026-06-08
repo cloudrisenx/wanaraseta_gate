@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-8 animate-in fade-in duration-300">
+
+    <!-- Breadcrumb / Back button -->
+    <div class="flex items-center justify-between">
+        <a href="{{ url_for('admin_dashboard') }}" class="inline-flex items-center space-x-2 text-slate-400 hover:text-white transition-colors text-sm font-semibold">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            <span>Kembali ke Dashboard</span>
+        </a>
+        <div class="text-xs bg-slate-900/60 border border-slate-800/80 px-3 py-1.5 rounded-xl text-slate-400 font-medium">
+            Mengedit Kiosk: <span class="text-emerald-400 font-bold font-mono">{{ config.tv_id }}</span>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        
+        <!-- Left: Configuration Form & Upload -->
+        <div class="space-y-8 lg:col-span-1">
+            
+            <!-- Update Info Card -->
+            <div class="bg-slate-900/30 backdrop-blur-md border border-slate-800/80 p-6 rounded-3xl relative overflow-hidden">
+                <h2 class="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+                    <svg class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span>Pengaturan Kiosk</span>
+                </h2>
+                
+                <form action="{{ url_for('edit_kiosk', tv_id=config.tv_id) }}" method="POST" enctype="multipart/form-data" class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">TV ID (Sifat: Kunci)</label>
+                        <input type="text" value="{{ config.tv_id }}" disabled class="block w-full px-4 py-3 bg-slate-950/20 border border-slate-900 rounded-2xl text-slate-500 font-mono text-sm font-semibold cursor-not-allowed">
+                    </div>
+                    
+                    <div>
+                        <label for="mqtt_topic" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">MQTT Topic (Opsional)</label>
+                        <input type="text" id="mqtt_topic" name="mqtt_topic" value="{{ config.mqtt_topic or '' }}" class="block w-full px-4 py-3 bg-slate-950/60 border border-slate-800/80 rounded-2xl text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all text-sm font-medium">
+                    </div>
+                    
+                    <div class="border-t border-slate-850 pt-5 space-y-3">
+                        <label for="music_file" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Musik Latar Belakang (Opsional untuk Gambar)</label>
+                        {% if config.music_filename %}
+                            <div class="flex items-center justify-between bg-slate-950/40 p-3 border border-slate-800 rounded-2xl">
+                                <div class="truncate mr-3 flex items-center space-x-2">
+                                    <svg class="h-4 w-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                                    </svg>
+                                    <span class="text-xs font-semibold text-slate-300 truncate" title="{{ config.music_filename }}">{{ config.music_filename }}</span>
+                                </div>
+                                <button type="submit" form="delete-music-form" class="p-1.5 rounded-lg border border-rose-950 bg-rose-950/20 hover:bg-rose-900/40 text-rose-400 transition-all shrink-0">
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                        {% endif %}
+                        <input type="file" id="music_file" name="music_file" accept="audio/*" class="block w-full text-xs text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 transition-all">
+                    </div>
+                    
+                    <div class="border-t border-slate-850 pt-5">
+                        <label for="media_files" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Upload Slideshow Media (Bisa banyak)</label>
+                        <div class="relative border-2 border-dashed border-slate-800 hover:border-slate-700 bg-slate-950/40 rounded-2xl p-6 transition-all flex flex-col items-center justify-center cursor-pointer group">
+                            <input type="file" id="media_files" name="media_files" multiple accept="image/*,video/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                            <svg class="h-10 w-10 text-slate-600 group-hover:text-emerald-400 transition-colors mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            <span class="text-sm font-semibold text-slate-300">Klik / Seret Media Ke Sini</span>
+                            <span class="text-xs text-slate-600 mt-1">Format: JPG, PNG, MP4, WEBM</span>
+                        </div>
+                        <div id="file-list-preview" class="text-xs text-slate-500 mt-2 italic hidden">
+                            File terpilih untuk di-upload: <span id="file-count-badge" class="font-bold text-emerald-400">0</span>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="w-full flex justify-center py-3.5 px-4 text-sm font-bold rounded-2xl text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition-all active:scale-[0.98]">
+                        Simpan Perubahan
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Integration Info Card -->
+            <div class="bg-slate-900/30 backdrop-blur-md border border-slate-800/80 p-6 rounded-3xl text-sm space-y-3">
+                <h3 class="font-bold text-white">Panduan Integrasi</h3>
+                <p class="text-slate-400 text-xs leading-relaxed">Next.js Kiosk akan memanggil URL konfigurasi ini pada saat dijalankan:</p>
+                <code class="block text-xs bg-slate-950 p-3 rounded-xl border border-slate-850 text-emerald-400 select-all font-mono break-all leading-normal">
+                    http://localhost:5000/api/config/{{ config.tv_id }}
+                </code>
+            </div>
+            
+        </div>
+
+        <!-- Right: Current Media Files Grid -->
+        <div class="lg:col-span-2 bg-slate-900/30 backdrop-blur-md border border-slate-800/80 p-6 rounded-3xl">
+            <h2 class="text-xl font-bold text-white mb-6 flex items-center space-x-2">
+                <svg class="h-5 w-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Daftar Slideshow Media ({{ config.media_files|length }})</span>
+            </h2>
+
+            {% if not config.media_files %}
+                <div class="text-center py-16 border border-dashed border-slate-800 rounded-2xl">
+                    <svg class="mx-auto h-12 w-12 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <p class="mt-4 text-slate-500 font-medium">Belum ada media terunggah. Kiosk akan menampilkan layar default.</p>
+                </div>
+            {% else %}
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    {% for media in config.media_files %}
+                        {% set ext = media.media_filename.rsplit('.', 1)[1].lower() %}
+                        <div class="group bg-slate-950/80 border border-slate-850 rounded-2xl overflow-hidden relative shadow-lg hover:shadow-xl transition-all flex flex-col justify-between">
+                            
+                            <!-- Media Preview -->
+                            <div class="aspect-video w-full bg-slate-900 flex items-center justify-center relative overflow-hidden">
+                                {% if ext in ['mp4', 'webm', 'ogg'] %}
+                                    <video src="{{ url_for('static', filename='uploads/' ~ media.media_filename) }}" muted class="w-full h-full object-cover"></video>
+                                    <div class="absolute inset-0 flex items-center justify-center bg-black/40">
+                                        <div class="h-10 w-10 rounded-full bg-slate-950/80 border border-slate-800 flex items-center justify-center text-slate-300">
+                                            <svg class="h-5 w-5 fill-current ml-0.5" viewBox="0 0 20 20">
+                                                <path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.27l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <img src="{{ url_for('static', filename='uploads/' ~ media.media_filename) }}" alt="Preview" class="w-full h-full object-cover">
+                                {% endif %}
+                            </div>
+
+                            <!-- Media Details & Actions -->
+                            <div class="p-4 flex items-center justify-between border-t border-slate-900/60 bg-slate-950/40">
+                                <div class="truncate mr-3">
+                                    <span class="text-xs font-bold text-slate-200 block truncate" title="{{ media.media_filename }}">
+                                        {{ media.media_filename }}
+                                    </span>
+                                    <span class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider font-mono">
+                                        {% if ext in ['mp4', 'webm', 'ogg'] %}Video{% else %}Gambar{% endif %}
+                                    </span>
+                                </div>
+                                <form action="{{ url_for('delete_media', media_id=media.id) }}" method="POST" onsubmit="return confirm('Hapus media ini?');">
+                                    <button type="submit" class="p-2 rounded-xl border border-rose-950 bg-rose-950/20 hover:bg-rose-900/40 text-rose-400 transition-all">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </form>
+                            </div>
+                            
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    // Show select file count in upload box
+    const mediaInput = document.getElementById('media_files');
+    const previewList = document.getElementById('file-list-preview');
+    const fileCount = document.getElementById('file-count-badge');
+    
+    mediaInput.addEventListener('change', (e) => {
+        const count = e.target.files.length;
+        if (count > 0) {
+            previewList.classList.remove('hidden');
+            fileCount.textContent = count + ' file';
+        } else {
+            previewList.classList.add('hidden');
+        }
+    });
+</script>
+
+<form id="delete-music-form" action="{{ url_for('delete_music', tv_id=config.tv_id) }}" method="POST" class="hidden" onsubmit="return confirm('Hapus musik latar belakang?');"></form>
+{% endblock %}
