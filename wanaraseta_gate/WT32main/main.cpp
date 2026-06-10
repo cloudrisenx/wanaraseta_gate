@@ -117,54 +117,63 @@ void cekUpdateGitHub(bool fromWeb = false) {
   String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/version.txt";
   String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/firmware.bin";
 
-  WiFiClientSecure client;
-  client.setInsecure(); // Bebas SSL
-
-  HTTPClient http;
-  http.begin(client, urlVersi);
-  int httpCode = http.GET();
-
   bool doUpdate = false;
+  String versiDiGitHub = "";
 
-  if (httpCode == HTTP_CODE_OK) {
-    String versiDiGitHub = http.getString();
-    versiDiGitHub.trim();
+  // Step 1: Cek Versi (Gunakan scope { } agar memory client lama langsung bebas setelah cek)
+  {
+    WiFiClientSecure client;
+    client.setInsecure(); 
+    HTTPClient http;
+    http.begin(client, urlVersi);
+    int httpCode = http.GET();
 
-    logMsg("[OTA] Versi ESP32   : " + String(APP_VERSION) + "\n");
-    logMsg("[OTA] Versi GitHub  : " + versiDiGitHub + "\n");
+    if (httpCode == HTTP_CODE_OK) {
+      versiDiGitHub = http.getString();
+      versiDiGitHub.trim();
 
-    if (versiDiGitHub != APP_VERSION && versiDiGitHub.length() > 0) {
-      logMsg("[OTA] >> UPDATE DITEMUKAN! File terbaru tersedia.\n");
-      logMsg("[OTA] >> Sedang menyedot firmware...\n(Proses memakan waktu 1-2 menit, JANGAN TUTUP HALAMAN INI)\n");
-      doUpdate = true;
+      logMsg("[OTA] Versi ESP32   : " + String(APP_VERSION) + "\n");
+      logMsg("[OTA] Versi GitHub  : " + versiDiGitHub + "\n");
+
+      if (versiDiGitHub != APP_VERSION && versiDiGitHub.length() > 0) {
+        logMsg("[OTA] >> UPDATE DITEMUKAN! File terbaru tersedia.\n");
+        logMsg("[OTA] >> Sedang menyedot firmware...\n(Proses memakan waktu 1-2 menit, JANGAN TUTUP HALAMAN INI)\n");
+        doUpdate = true;
+      } else {
+        logMsg("[OTA] >> Firmware sudah paling baru. Aman terkendali.\n");
+      }
     } else {
-      logMsg("[OTA] >> Firmware sudah paling baru. Aman terkendali.\n");
+      logMsg("[OTA] >> Gagal menghubungi GitHub (HTTP: " + String(httpCode) + "). Cek koneksi internet.\n");
     }
-  } else {
-    logMsg("[OTA] >> Gagal menghubungi GitHub (HTTP: " + String(httpCode) + "). Cek koneksi internet atau path folder.\n");
+    http.end();
   }
-  http.end();
   
   if (doUpdate) {
-    httpUpdate.rebootOnUpdate(false); // Atur manual restart
-    
-    // Cara aman mematikan WDT di berbagai versi Core
-    esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+    // Step 2: Persiapan RAM (Putuskan MQTT agar RAM lega sebelum download firmware besar)
+    if (mqttClient.connected()) {
+      mqttClient.disconnect();
+      delay(500);
+    }
 
-    t_httpUpdate_return ret = httpUpdate.update(client, urlFirmware);
+    WiFiClientSecure updateClient;
+    updateClient.setInsecure();
+
+    httpUpdate.rebootOnUpdate(true); // Biarkan otomatis restart agar sistem lebih bersih
     
+    // Matikan Watchdog sebelum proses blocking yang lama
+    esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+    yield();
+    delay(100);
+
+    t_httpUpdate_return ret = httpUpdate.update(updateClient, urlFirmware);
+    
+    // Jika sampai ke baris ini, berarti update GAGAL (karena jika sukses akan restart)
     esp_task_wdt_add(xTaskGetCurrentTaskHandle()); 
 
     if (ret == HTTP_UPDATE_OK) {
       logMsg("\n[OTA] >> UPDATE SUKSES! ESP32 akan restart otomatis.\n");
-      if (fromWeb) {
-        server.sendContent("</pre><br><a href='/' class='btn-orange'>KEMBALI</a></div></body></html>");
-        server.sendContent(""); // Sinyal end of chunk
-      }
-      delay(1000);
-      ESP.restart();
     } else {
-      logMsg("\n[OTA] >> GAGAL UPDATE: " + httpUpdate.getLastErrorString() + " (" + String(httpUpdate.getLastError()) + ")\n");
+      logMsg("\n[OTA] >> GAGAL: " + httpUpdate.getLastErrorString() + " (Code: " + String(httpUpdate.getLastError()) + ")\n");
     }
   }
 }
