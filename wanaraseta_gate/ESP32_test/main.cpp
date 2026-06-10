@@ -32,6 +32,11 @@
 // Watchdog Timer configuration
 #define WDT_TIMEOUT_SECONDS 5  // Dibuat lebih waspada: Jika loop() nge-hang > 5 detik, ESP akan restart
 
+// Konfigurasi Barcode Scanner (UART2)
+#define BARCODE_RX          16
+#define BARCODE_TX          17
+#define BARCODE_BAUD        9600  // Sesuaikan dengan baudrate scanner Anda
+
 // ========================================================================
 // KONFIGURASI RFID & MQTT
 // ========================================================================
@@ -49,7 +54,7 @@
 #define RST_PIN             22
 
 // Variabel MQTT (Nilai default, akan ditimpa oleh pengaturan dari Web Dashboard)
-String mqtt_server     = "192.168.4.50";
+String mqtt_server     = "127.0.0.1";
 int    mqtt_port       = 1883;
 String mqtt_user       = "gate_esp32_01";
 String mqtt_pass       = "11223344";
@@ -157,6 +162,7 @@ void handleRoot() {
       select, input[type='text'], input[type='number'], input[type='password'] { background-color: #252525; color: white; border: 1px solid #444; font-weight: normal; cursor: auto; margin-top: 5px; }
       .btn-orange { background-color: #ff9f43; color: #121212; }
       .btn-blue { background-color: #00adb5; color: #121212; margin-top: 25px; }
+      .btn-red { background-color: #ff5252; color: #ffffff; }
       hr { border-color: #333; margin: 20px 0; }
     </style>
   </head>
@@ -190,6 +196,12 @@ void handleRoot() {
         <input type='password' name='mqtt_pass' placeholder='Password MQTT' value='{{MQTT_PASS}}'>
         <input type='text' name='mqtt_client_id' placeholder='Client ID (contoh: Gate_02)' value='{{MQTT_CLIENT_ID}}' required>
         <input type='submit' class='btn-orange' value='SIMPAN MQTT & RESTART'>
+      </form>
+
+      <hr>
+      <h3>Sistem</h3>
+      <form action='/forget_wifi' method='POST' onsubmit="return confirm('Yakin ingin menghapus WiFi? Alat akan restart ke mode setup.')">
+        <input type='submit' class='btn-red' value='LUPAKAN WIFI (RESET KONEKSI)'>
       </form>
 
       <hr>
@@ -256,6 +268,17 @@ void handleSaveMqtt() {
     delay(2000);
     ESP.restart();
   }
+}
+
+void handleForgetWifi() {
+  String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;}</style></head><body><h2 style='color:#ff5252;'>WiFi Telah Dilupakan!</h2><p>ESP32 akan restart dan masuk ke mode Hotspot Setup (Wanara_Gate_Setup).</p><p>Silakan hubungkan HP Anda ke WiFi tersebut untuk mengatur koneksi baru.</p></body></html>";
+  server.send(200, "text/html", html);
+  
+  Serial.println("[WIFI] Perintah Forget WiFi diterima. Menghapus kredensial...");
+  delay(2000);
+  wm.resetSettings(); // Menghapus SSID & Password dari memori NVS
+  esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+  ESP.restart();
 }
 
 void handleCekUpdate() {
@@ -428,6 +451,7 @@ void setup() {
   server.on("/save_folder", HTTP_POST, handleSaveFolder);
   server.on("/save_mqtt", HTTP_POST, handleSaveMqtt);
   server.on("/cek_update", HTTP_GET, handleCekUpdate);
+  server.on("/forget_wifi", HTTP_POST, handleForgetWifi);
   server.on("/do_update", HTTP_GET, handleDoUpdate);
   server.begin();
 
@@ -436,9 +460,14 @@ void setup() {
   mfrc522.PCD_Init();
   Serial.println("[RFID] Sensor MFRC522 Siap.");
 
+  // Setup Barcode Scanner (UART2)
+  Serial2.begin(BARCODE_BAUD, SERIAL_8N1, BARCODE_RX, BARCODE_TX);
+  Serial.println("[BARCODE] Scanner UART2 Siap (GPIO 16/17).");
+
   // Setup MQTT Broker
   mqttClient.setServer(mqtt_server.c_str(), mqtt_port);
   mqttClient.setCallback(mqttCallback); // Daftarkan fungsi callback
+  mqttClient.setBufferSize(512);        // Perbesar buffer agar JSON aman
 
   // Aktifkan Task Watchdog Timer SETELAH WiFi Terhubung (Mencegah restart saat loading WiFi)
   #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
@@ -492,6 +521,30 @@ void loop() {
   // MASUKKAN LOGIKA RFID, KONTROL GERBANG & EMQX DI SINI
   // ---------------------------------------------------------
 
+  // Logika Pembacaan Barcode (UART2)
+  if (Serial2.available()) {
+    String barcodeData = Serial2.readStringUntil('\r'); // Biasanya scanner mengirim CR atau LF di akhir
+    barcodeData.trim();
+    
+    if (barcodeData.length() > 0) {
+      Serial.println("[BARCODE] Terdeteksi! Data: " + barcodeData);
+      
+      if (WiFi.status() == WL_CONNECTED && mqttClient.connected()) {
+        // Kirim Payload ke EMQX (Gunakan format JSON yang sama agar Backend mudah mengolahnya)
+        String payload = "{\"barcode\":\"" + barcodeData + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
+        String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
+        
+        if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
+          Serial.println("[MQTT] Barcode SUKSES Terkirim.");
+        } else {
+          Serial.println("[MQTT] Barcode GAGAL Mengirim!");
+        }
+      } else {
+        Serial.println("[MQTT] Offline, Barcode tidak terkirim.");
+      }
+    }
+  }
+
   // Logika Pembacaan RFID
   static unsigned long lastRFIDReadTime = 0;
 
@@ -516,8 +569,11 @@ void loop() {
         String payload = "{\"rfid\":\"" + rfidUid + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
         String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
         
-        mqttClient.publish(pubTopic.c_str(), payload.c_str());
-        Serial.println("[MQTT] Data terkirim ke " + pubTopic + ": " + payload);
+        if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
+          Serial.println("[MQTT] SUKSES Terkirim ke " + pubTopic);
+        } else {
+          Serial.println("[MQTT] GAGAL Mengirim! Cek koneksi atau ukuran buffer.");
+        }
         
         mfrc522.PICC_HaltA();
         mfrc522.PCD_StopCrypto1();
