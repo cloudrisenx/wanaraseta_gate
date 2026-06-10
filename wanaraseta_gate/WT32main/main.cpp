@@ -17,7 +17,7 @@
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.5"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "2.1"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -162,14 +162,14 @@ void cekUpdateGitHub(bool fromWeb = false) {
     httpUpdate.rebootOnUpdate(true); // Biarkan otomatis restart agar sistem lebih bersih
     
     // Matikan Watchdog sebelum proses blocking yang lama
-    esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+    esp_task_wdt_delete(NULL); 
     yield();
     delay(100);
 
     t_httpUpdate_return ret = httpUpdate.update(updateClient, urlFirmware);
     
     // Jika sampai ke baris ini, berarti update GAGAL (karena jika sukses akan restart)
-    esp_task_wdt_add(xTaskGetCurrentTaskHandle()); 
+    esp_task_wdt_add(NULL); 
 
     if (ret == HTTP_UPDATE_OK) {
       logMsg("\n[OTA] >> UPDATE SUKSES! ESP32 akan restart otomatis.\n");
@@ -323,7 +323,7 @@ void handleSaveFolder() {
 
     String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} a{background:#222;color:#fff;padding:12px 20px;text-decoration:none;border:1px solid #444;display:inline-block;margin-top:20px;font-weight:bold;}</style></head><body><h2>Target mesin diubah ke: " + newFolder + "</h2><p style='color:#aaa;'>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/'>KEMBALI KE DASHBOARD</a></body></html>";
     server.send(200, "text/html", html);
-    esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+    esp_task_wdt_delete(NULL); 
     delay(2000);
     ESP.restart();
   }
@@ -347,7 +347,7 @@ void handleSaveMqtt() {
 
     String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} a{background:#222;color:#fff;padding:12px 20px;text-decoration:none;border:1px solid #444;display:inline-block;margin-top:20px;font-weight:bold;}</style></head><body><h2>Pengaturan MQTT Disimpan!</h2><p style='color:#aaa;'>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/'>KEMBALI KE DASHBOARD</a></body></html>";
     server.send(200, "text/html", html);
-    esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+    esp_task_wdt_delete(NULL); 
     delay(2000);
     ESP.restart();
   }
@@ -470,7 +470,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       triggerRelay(2);
     }else if (cmd == "reboot") {
       Serial.println("[COMMAND] Perintah Reboot dari server. Restarting...");
-      esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
+      esp_task_wdt_delete(NULL); 
       delay(1000);
       ESP.restart();
     }

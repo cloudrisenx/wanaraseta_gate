@@ -85,17 +85,18 @@ void handleRoot() {
   <!DOCTYPE html>
   <html>
   <head>
+    <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <style>
-      body { background-color: #121212; color: #ffffff; font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-      .box { max-width: 420px; margin: 0 auto; padding: 25px; background-color: #1e1e1e; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-      h2 { color: #00adb5; margin-bottom: 5px; }
-      .info-text { color: #aaaaaa; font-size: 14px; margin-bottom: 25px; }
-      select, input[type='submit'] { width: 100%; padding: 12px; margin-top: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; }
-      select { background-color: #252525; color: white; border: 1px solid #444; }
-      .btn-orange { background-color: #ff9f43; color: #121212; }
-      .btn-blue { background-color: #00adb5; color: #121212; margin-top: 25px; }
-      hr { border-color: #333; margin: 20px 0; }
+      body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding: 20px; }
+      .box { max-width: 420px; margin: 0 auto; padding: 20px; background: #111; border: 1px solid #333; }
+      h2 { margin-bottom: 10px; font-weight: normal; }
+      h3 { border-bottom: 1px solid #333; padding-bottom: 5px; font-size: 16px; margin-top: 20px; font-weight: normal; }
+      .info-text { color: #aaa; font-size: 14px; margin-bottom: 25px; }
+      input, select { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; background: #000; color: #fff; border: 1px solid #444; }
+      input[type='submit'] { background: #222; cursor: pointer; font-weight: bold; margin-top: 15px; }
+      input[type='submit']:hover { background: #333; }
+      hr { border: 0; border-top: 1px solid #222; margin: 20px 0; }
     </style>
   </head>
   <body>
@@ -116,11 +117,11 @@ void handleRoot() {
           <option value='WT32_test' {{SEL_WT32TEST}}>Mesin WT32 Test (WT32_test)</option>
           <option value='src_mainOTA' {{SEL_SRCMAINOTA}}>Main OTA (src_mainOTA)</option>
         </select>
-        <input type='submit' class='btn-orange' value='SIMPAN MESIN & RESTART'>
+        <input type='submit' value='SIMPAN MESIN & RESTART'>
       </form>
 
       <form action='/cek_update' method='GET'>
-        <input type='submit' class='btn-blue' value='CEK UPDATE GITHUB SEKARANG'>
+        <input type='submit' value='CEK UPDATE GITHUB SEKARANG'>
       </form>
     </div>
   </body>
@@ -146,7 +147,7 @@ void handleSaveFolder() {
     preferences.putString("ota_folder", newFolder);
     preferences.end();
     
-    String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Target mesin diubah ke: " + newFolder + "</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
+    String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} a{background:#222;color:#fff;padding:12px 20px;text-decoration:none;border:1px solid #444;display:inline-block;margin-top:20px;font-weight:bold;}</style></head><body><h2>Target mesin diubah ke: " + newFolder + "</h2><p style='color:#aaa;'>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/'>KEMBALI KE DASHBOARD</a></body></html>";
     server.send(200, "text/html", html);
     delay(2000);
     ESP.restart();
@@ -154,7 +155,7 @@ void handleSaveFolder() {
 }
 
 void handleCekUpdate() {
-  String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .loader{border:6px solid #1e1e1e;border-top:6px solid #00adb5;border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2 style='color:#00adb5;'>Menghubungi GitHub...</h2><div class='loader'></div><p>Sistem sedang memproses OTA, mohon tunggu sebentar...</p></body></html>";
+  String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} .loader{border:4px solid #222;border-top:4px solid #fff;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2>Menghubungi GitHub...</h2><div class='loader'></div><p style='color:#aaa;'>Sistem sedang memproses OTA, mohon tunggu sebentar...</p></body></html>";
   server.send(200, "text/html", html);
 }
 
@@ -166,13 +167,15 @@ void handleDoUpdate() {
   <!DOCTYPE html>
   <html>
   <head>
+    <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <style>
-      body { background-color: #121212; color: #ffffff; font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-      .box { max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1e1e; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-      h2 { color: #00adb5; margin-bottom: 20px; }
-      pre { background-color: #000; padding: 15px; border-radius: 8px; text-align: left; overflow-x: auto; color: #00ff00; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
-      .btn-orange { background-color: #ff9f43; color: #121212; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; text-decoration: none; display: inline-block; margin-top: 20px; box-sizing: border-box;}
+      body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding: 20px; }
+      .box { max-width: 500px; margin: 0 auto; padding: 20px; background: #111; border: 1px solid #333; }
+      h2 { margin-bottom: 20px; font-weight: normal; }
+      pre { background: #000; padding: 15px; border: 1px solid #222; text-align: left; overflow-x: auto; color: #0f0; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; }
+      a { background: #222; color: #fff; width: 100%; padding: 12px; border: 1px solid #444; text-decoration: none; display: inline-block; margin-top: 20px; box-sizing: border-box; font-weight: bold; }
+      a:hover { background: #333; }
     </style>
   </head>
   <body>
@@ -186,7 +189,7 @@ void handleDoUpdate() {
   cekUpdateGitHub(true);
   
   // Jika gagal, tutup tag HTML-nya
-  server.sendContent("</pre><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></div></body></html>");
+  server.sendContent("</pre><a href='/'>KEMBALI KE DASHBOARD</a></div></body></html>");
   server.sendContent(""); // Sinyal selesai HTTP
 }
 

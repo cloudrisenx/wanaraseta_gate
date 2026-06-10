@@ -82,17 +82,18 @@ void handleRoot() {
   <!DOCTYPE html>
   <html>
   <head>
+    <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <style>
-      body { background-color: #121212; color: #ffffff; font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-      .box { max-width: 420px; margin: 0 auto; padding: 25px; background-color: #1e1e1e; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-      h2 { color: #00adb5; margin-bottom: 5px; }
-      .info-text { color: #aaaaaa; font-size: 14px; margin-bottom: 25px; }
-      select, input[type='submit'] { width: 100%; padding: 12px; margin-top: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; }
-      select { background-color: #252525; color: white; border: 1px solid #444; }
-      .btn-orange { background-color: #ff9f43; color: #121212; }
-      .btn-blue { background-color: #00adb5; color: #121212; margin-top: 25px; }
-      hr { border-color: #333; margin: 20px 0; }
+      body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding: 20px; }
+      .box { max-width: 420px; margin: 0 auto; padding: 20px; background: #111; border: 1px solid #333; }
+      h2 { margin-bottom: 10px; font-weight: normal; }
+      h3 { border-bottom: 1px solid #333; padding-bottom: 5px; font-size: 16px; margin-top: 20px; font-weight: normal; }
+      .info-text { color: #aaa; font-size: 14px; margin-bottom: 25px; }
+      input, select { width: 100%; padding: 12px; margin-top: 10px; box-sizing: border-box; background: #000; color: #fff; border: 1px solid #444; }
+      input[type='submit'] { background: #222; cursor: pointer; font-weight: bold; margin-top: 15px; }
+      input[type='submit']:hover { background: #333; }
+      hr { border: 0; border-top: 1px solid #222; margin: 20px 0; }
     </style>
   </head>
   <body>
@@ -110,11 +111,11 @@ void handleRoot() {
           <option value='main' {{SEL_MAIN}}>MAIN (Jalur Stabil)</option>
           <option value='testing' {{SEL_TEST}}>TESTING (Jalur Eksperimen)</option>
         </select>
-        <input type='submit' class='btn-orange' value='SIMPAN PENGATURAN & RESTART'>
+        <input type='submit' value='SIMPAN PENGATURAN & RESTART'>
       </form>
 
       <form action='/cek_update' method='GET'>
-        <input type='submit' class='btn-blue' value='CEK UPDATE GITHUB SEKARANG'>
+        <input type='submit' value='CEK UPDATE GITHUB SEKARANG'>
       </form>
     </div>
   </body>
@@ -137,14 +138,15 @@ void handleSaveBranch() {
     preferences.putString("ota_branch", newBranch);
     preferences.end();
     
-    server.send(200, "text/html", "<html><body style='background:#121212; color:#00adb5; text-align:center; padding:50px; font-family:Arial;'><h2>Jalur berhasil diubah ke: " + newBranch + "</h2><p style='color:#fff;'>Sistem sedang di-restart...</p></body></html>");
+    server.send(200, "text/html", "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} a{background:#222;color:#fff;padding:12px 20px;text-decoration:none;border:1px solid #444;display:inline-block;margin-top:20px;font-weight:bold;}</style></head><body><h2>Jalur berhasil diubah ke: " + newBranch + "</h2><p style='color:#aaa;'>Sistem sedang di-restart...</p></body></html>");
     delay(2000);
     ESP.restart();
   }
 }
 
 void handleCekUpdate() {
-  server.send(200, "text/html", "<html><body style='background:#121212; color:#fff; text-align:center; padding:50px; font-family:Arial;'><h2 style='color:#00adb5;'>Menghubungi Server GitHub...</h2><p>Jika ada update, perangkat akan mati sesaat lalu restart otomatis.</p><a href='/' style='color:#ff9f43;'>Kembali ke Menu</a></body></html>");
+  String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} .loader{border:4px solid #222;border-top:4px solid #fff;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2>Menghubungi GitHub...</h2><div class='loader'></div><p style='color:#aaa;'>Sistem sedang memproses OTA, mohon tunggu sebentar...</p></body></html>";
+  server.send(200, "text/html", html);
   delay(1000);
   cekUpdateGitHub();
 }
