@@ -5,6 +5,5 @@
 .vscode/
 
 # File binary dan cache lainnya
-*.bin
 *.elf
 .DS_Store

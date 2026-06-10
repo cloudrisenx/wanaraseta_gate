@@ -17,7 +17,7 @@
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.3"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "1.5"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -115,8 +115,8 @@ void cekUpdateGitHub(bool fromWeb = false) {
   String folderPath = folderAktif;
 
   // Rakit URL secara dinamis berdasarkan konfigurasi di atas
-  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/version.txt";
-  String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/firmware.bin";
+  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/wanaraseta_gate/" + folderPath + "/version.txt";
+  String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/wanaraseta_gate/" + folderPath + "/firmware.bin";
 
   bool doUpdate = false;
   String versiDiGitHub = "";
@@ -193,31 +193,24 @@ void handleRoot() {
     <meta http-equiv='refresh' content='3'>
     <title>Wanara Seta - Gate Portal</title>
     <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: linear-gradient(135deg, #0a0e27 0%, #16213e 100%); color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-height: 100vh; padding: 15px; }
+      body { background: #000; color: #eee; font-family: sans-serif; padding: 15px; margin: 0; }
       .container { max-width: 500px; margin: 0 auto; }
-      .box { background: linear-gradient(180deg, #1a1f3a 0%, #151b2f 100%); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,173,181,0.15); padding: 28px; margin-bottom: 20px; border: 1px solid rgba(0,173,181,0.2); }
-      h2 { color: #00adb5; margin-bottom: 8px; font-size: 24px; text-shadow: 0 2px 10px rgba(0,173,181,0.3); }
-      h3 { color: #64b5f6; margin-top: 20px; margin-bottom: 12px; font-size: 16px; border-bottom: 2px solid #00adb5; padding-bottom: 8px; }
-      .info-text { color: #b0b0b0; font-size: 14px; margin-bottom: 18px; line-height: 1.6; }
-      .status-container { background: rgba(0,0,0,0.3); padding: 16px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #00adb5; }
-      .status-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+      .box { background: #111; padding: 20px; border: 1px solid #333; }
+      h2, h3 { color: #fff; font-weight: normal; margin-bottom: 10px; }
+      h3 { margin-top: 20px; border-bottom: 1px solid #333; padding-bottom: 5px; font-size: 16px; }
+      .info-text { color: #aaa; font-size: 14px; margin-bottom: 20px; }
+      .status-container { background: #000; border: 1px solid #222; padding: 15px; margin-bottom: 20px; }
+      .status-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dotted #222; font-size: 14px; }
       .status-row:last-child { border-bottom: none; }
-      .status-label { color: #aaaaaa; font-size: 13px; }
-      .status-value { color: #00ff88; font-weight: bold; font-size: 14px; }
-      .status-value.error { color: #ff6b6b; }
-      .status-value.warning { color: #ffa500; }
-      .status-icon { margin-right: 8px; }
-      select, input[type='submit'], input[type='text'], input[type='number'], input[type='password'] { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; box-sizing: border-box; font-size: 14px; transition: all 0.3s ease; }
-      select, input[type='text'], input[type='number'], input[type='password'] { background-color: #252f45; color: white; border: 1px solid #00adb5; cursor: auto; }
-      select:focus, input:focus { outline: none; background-color: #2a3550; border-color: #00ff88; box-shadow: 0 0 10px rgba(0,255,136,0.3); }
-      .btn-orange { background: linear-gradient(135deg, #ff9f43 0%, #ff7e22 100%); color: #121212; margin-top: 10px; font-weight: 600; transition: transform 0.2s, box-shadow 0.2s; }
-      .btn-orange:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,159,67,0.4); }
-      .btn-blue { background: linear-gradient(135deg, #00adb5 0%, #00838f 100%); color: #121212; margin-top: 20px; font-weight: 600; }
-      .btn-blue:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,173,181,0.4); }
-      .btn-red { background: linear-gradient(135deg, #ff5252 0%, #d32f2f 100%); color: #ffffff; }
-      hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 18px 0; }
-      .version-badge { display: inline-block; background: rgba(0,173,181,0.2); color: #00adb5; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-left: 8px; border: 1px solid #00adb5; }
+      .status-label { color: #888; }
+      .status-value { color: #0f0; }
+      .status-value.error { color: #f55; }
+      .status-value.warning { color: #fd0; }
+      input, select { width: 100%; padding: 12px; margin-top: 8px; box-sizing: border-box; background: #000; color: #fff; border: 1px solid #444; }
+      input[type='submit'] { background: #222; cursor: pointer; font-weight: bold; margin-top: 15px; }
+      input[type='submit']:hover { background: #333; }
+      hr { border: 0; border-top: 1px solid #222; margin: 20px 0; }
+      .version-badge { background: #222; padding: 2px 8px; font-size: 12px; margin-left: 8px; border: 1px solid #444; }
     </style>
   </head>
   <body>
@@ -225,7 +218,7 @@ void handleRoot() {
       <div class='box'>
         <h2>🏗️ Wanara Seta - Gate Portal</h2>
         <div class='info-text'>
-          Versi Firmware: <strong style='color:#00ff88;'>{{VERSION}}</strong><span class='version-badge'>{{FOLDER}}</span>
+          Versi Firmware: <strong style='color:#fff;'>{{VERSION}}</strong><span class='version-badge'>{{FOLDER}}</span>
         </div>
 
         <hr>
@@ -245,14 +238,14 @@ void handleRoot() {
           </div>
           <div class='status-row'>
             <span class='status-label'>💳 Scan Terakhir</span>
-            <span class='status-value' style='color:#64b5f6;'>{{LAST_RFID}}</span>
+            <span class='status-value' style='color:#fff;'>{{LAST_RFID}}</span>
           </div>
         </div>
 
         <hr>
         <h3>⚙️ Pengaturan Mesin/Board</h3>
         <form action='/save_folder' method='POST'>
-          <label style='display:block; margin-bottom:8px; color:#aaa; font-size:13px;'>Pilih Target Board:</label>
+          <label style='display:block; margin-bottom:8px; color:#888; font-size:13px;'>Pilih Target Board:</label>
           <select name='folder_name'>
             <option value='ESP32main' {{SEL_ESP32MAIN}}>🔵 Mesin ESP32 (ESP32main)</option>
             <option value='ESP32_test' {{SEL_ESP32TEST}}>🟦 Mesin ESP32 Test (ESP32_test)</option>
@@ -260,7 +253,7 @@ void handleRoot() {
             <option value='WT32_test' {{SEL_WT32TEST}}>🟧 Mesin WT32 Test (WT32_test)</option>
             <option value='src_mainOTA' {{SEL_SRCMAINOTA}}>🟨 Main OTA (src_mainOTA)</option>
           </select>
-          <input type='submit' class='btn-orange' value='💾 SIMPAN & RESTART'>
+          <input type='submit' value='SIMPAN PENGATURAN & RESTART'>
         </form>
 
         <hr>
@@ -271,17 +264,17 @@ void handleRoot() {
           <input type='text' name='mqtt_user' placeholder='Username MQTT' value='{{MQTT_USER}}' required>
           <input type='password' name='mqtt_pass' placeholder='Password MQTT' value='{{MQTT_PASS}}'>
           <input type='text' name='mqtt_client_id' placeholder='Client ID (contoh: Gate_02)' value='{{MQTT_CLIENT_ID}}' required>
-          <input type='submit' class='btn-orange' value='💾 SIMPAN MQTT & RESTART'>
+          <input type='submit' value='SIMPAN MQTT & RESTART'>
         </form>
 
         <hr>
         <form action='/cek_update' method='GET'>
-          <input type='submit' class='btn-blue' value='🔄 CEK UPDATE GITHUB'>
+          <input type='submit' value='CEK UPDATE GITHUB SEKARANG'>
         </form>
       </div>
       
-      <div style='text-align:center; color:#666; font-size:12px; margin-top:20px;'>
-        <p>⏱️ Auto-refresh setiap 3 detik | Last Update: <span style='color:#00adb5;'>{{TIMESTAMP}}</span></p>
+      <div style='text-align:center; color:#555; font-size:12px; margin-top:20px;'>
+        <p>⏱️ Auto-refresh (3 detik) | Last Update: <span style='color:#fff;'>{{TIMESTAMP}}</span></p>
       </div>
     </div>
   </body>
@@ -328,7 +321,7 @@ void handleSaveFolder() {
     preferences.putString("ota_folder", newFolder);
     preferences.end();
 
-    String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Target mesin diubah ke: " + newFolder + "</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
+    String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} a{background:#222;color:#fff;padding:12px 20px;text-decoration:none;border:1px solid #444;display:inline-block;margin-top:20px;font-weight:bold;}</style></head><body><h2>Target mesin diubah ke: " + newFolder + "</h2><p style='color:#aaa;'>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/'>KEMBALI KE DASHBOARD</a></body></html>";
     server.send(200, "text/html", html);
     esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
     delay(2000);
@@ -352,7 +345,7 @@ void handleSaveMqtt() {
     preferences.putString("mqtt_client_id", mqtt_client_id);
     preferences.end();
 
-    String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Pengaturan MQTT Disimpan!</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
+    String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} a{background:#222;color:#fff;padding:12px 20px;text-decoration:none;border:1px solid #444;display:inline-block;margin-top:20px;font-weight:bold;}</style></head><body><h2>Pengaturan MQTT Disimpan!</h2><p style='color:#aaa;'>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/'>KEMBALI KE DASHBOARD</a></body></html>";
     server.send(200, "text/html", html);
     esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
     delay(2000);
@@ -361,7 +354,7 @@ void handleSaveMqtt() {
 }
 
 void handleCekUpdate() {
-  String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .loader{border:6px solid #1e1e1e;border-top:6px solid #00adb5;border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2 style='color:#00adb5;'>Menghubungi GitHub...</h2><div class='loader'></div><p>Sistem sedang memproses OTA, mohon tunggu sebentar...</p></body></html>";
+  String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#000;color:#fff;text-align:center;padding:50px;font-family:sans-serif;} .loader{border:4px solid #222;border-top:4px solid #fff;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2>Menghubungi GitHub...</h2><div class='loader'></div><p style='color:#aaa;'>Sistem sedang memproses OTA, mohon tunggu sebentar...</p></body></html>";
   server.send(200, "text/html", html);
 }
 
@@ -376,11 +369,12 @@ void handleDoUpdate() {
     <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <style>
-      body { background-color: #121212; color: #ffffff; font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-      .box { max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1e1e; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-      h2 { color: #00adb5; margin-bottom: 20px; }
-      pre { background-color: #000; padding: 15px; border-radius: 8px; text-align: left; overflow-x: auto; color: #00ff00; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
-      .btn-orange { background-color: #ff9f43; color: #121212; width: 100%; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; text-decoration: none; display: inline-block; margin-top: 20px; box-sizing: border-box;}
+      body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding: 20px; }
+      .box { max-width: 500px; margin: 0 auto; padding: 20px; background: #111; border: 1px solid #333; }
+      h2 { margin-bottom: 20px; font-weight: normal; }
+      pre { background: #000; padding: 15px; border: 1px solid #222; text-align: left; overflow-x: auto; color: #0f0; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; }
+      a { background: #222; color: #fff; width: 100%; padding: 12px; border: 1px solid #444; text-decoration: none; display: inline-block; margin-top: 20px; box-sizing: border-box; font-weight: bold; }
+      a:hover { background: #333; }
     </style>
   </head>
   <body>
@@ -394,7 +388,7 @@ void handleDoUpdate() {
   cekUpdateGitHub(true);
   
   // Jika gagal/tidak butuh update, tutup tag HTML-nya
-  server.sendContent("</pre><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></div></body></html>");
+  server.sendContent("</pre><a href='/'>KEMBALI KE DASHBOARD</a></div></body></html>");
   server.sendContent(""); // Sinyal selesai HTTP
 }
 
