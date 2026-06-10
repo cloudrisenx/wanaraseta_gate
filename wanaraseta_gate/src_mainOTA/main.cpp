@@ -47,7 +47,7 @@ void cekUpdateGitHub(bool fromWeb = false) {
   logMsg("[OTA] Memeriksa update di cabang GitHub: main\n");
 
   // Rakit nama folder berdasarkan pilihan yang disimpan via Web Dashboard
-  String folderPath = String(GITHUB_REPO) + "/" + folderAktif;
+  String folderPath = folderAktif;
 
   // Rakit URL secara dinamis berdasarkan konfigurasi di atas
   String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/" + folderPath + "/firmware.bin";
