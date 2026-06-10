@@ -11,12 +11,13 @@
 #include <MFRC522.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h> // Tambahkan library ini untuk parsing JSON
+#include <time.h> // Untuk timestamp
 
 // ========================================================================
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "1.2"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "1.3"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -187,63 +188,101 @@ void handleRoot() {
   <!DOCTYPE html>
   <html>
   <head>
+    <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <meta http-equiv='refresh' content='3'>
+    <title>Wanara Seta - Gate Portal</title>
     <style>
-      body { background-color: #121212; color: #ffffff; font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-      .box { max-width: 420px; margin: 0 auto; padding: 25px; background-color: #1e1e1e; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-      h2 { color: #00adb5; margin-bottom: 5px; }
-      .info-text { color: #aaaaaa; font-size: 14px; margin-bottom: 25px; }
-      select, input[type='submit'], input[type='text'], input[type='number'], input[type='password'] { width: 100%; padding: 12px; margin-top: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; box-sizing: border-box; }
-      select, input[type='text'], input[type='number'], input[type='password'] { background-color: #252525; color: white; border: 1px solid #444; font-weight: normal; cursor: auto; margin-top: 5px; }
-      .btn-orange { background-color: #ff9f43; color: #121212; }
-      .btn-blue { background-color: #00adb5; color: #121212; margin-top: 25px; }
-      .btn-red { background-color: #ff5252; color: #ffffff; }
-      hr { border-color: #333; margin: 20px 0; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: linear-gradient(135deg, #0a0e27 0%, #16213e 100%); color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-height: 100vh; padding: 15px; }
+      .container { max-width: 500px; margin: 0 auto; }
+      .box { background: linear-gradient(180deg, #1a1f3a 0%, #151b2f 100%); border-radius: 16px; box-shadow: 0 8px 32px rgba(0,173,181,0.15); padding: 28px; margin-bottom: 20px; border: 1px solid rgba(0,173,181,0.2); }
+      h2 { color: #00adb5; margin-bottom: 8px; font-size: 24px; text-shadow: 0 2px 10px rgba(0,173,181,0.3); }
+      h3 { color: #64b5f6; margin-top: 20px; margin-bottom: 12px; font-size: 16px; border-bottom: 2px solid #00adb5; padding-bottom: 8px; }
+      .info-text { color: #b0b0b0; font-size: 14px; margin-bottom: 18px; line-height: 1.6; }
+      .status-container { background: rgba(0,0,0,0.3); padding: 16px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #00adb5; }
+      .status-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+      .status-row:last-child { border-bottom: none; }
+      .status-label { color: #aaaaaa; font-size: 13px; }
+      .status-value { color: #00ff88; font-weight: bold; font-size: 14px; }
+      .status-value.error { color: #ff6b6b; }
+      .status-value.warning { color: #ffa500; }
+      .status-icon { margin-right: 8px; }
+      select, input[type='submit'], input[type='text'], input[type='number'], input[type='password'] { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; box-sizing: border-box; font-size: 14px; transition: all 0.3s ease; }
+      select, input[type='text'], input[type='number'], input[type='password'] { background-color: #252f45; color: white; border: 1px solid #00adb5; cursor: auto; }
+      select:focus, input:focus { outline: none; background-color: #2a3550; border-color: #00ff88; box-shadow: 0 0 10px rgba(0,255,136,0.3); }
+      .btn-orange { background: linear-gradient(135deg, #ff9f43 0%, #ff7e22 100%); color: #121212; margin-top: 10px; font-weight: 600; transition: transform 0.2s, box-shadow 0.2s; }
+      .btn-orange:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,159,67,0.4); }
+      .btn-blue { background: linear-gradient(135deg, #00adb5 0%, #00838f 100%); color: #121212; margin-top: 20px; font-weight: 600; }
+      .btn-blue:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,173,181,0.4); }
+      .btn-red { background: linear-gradient(135deg, #ff5252 0%, #d32f2f 100%); color: #ffffff; }
+      hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 18px 0; }
+      .version-badge { display: inline-block; background: rgba(0,173,181,0.2); color: #00adb5; padding: 4px 12px; border-radius: 20px; font-size: 12px; margin-left: 8px; border: 1px solid #00adb5; }
     </style>
   </head>
   <body>
-    <div class='box'>
-      <h2>Wanara Seta - Gate Portal</h2>
-      <div class='info-text'>
-        <p>Versi Firmware : <strong style='color:#fff;'>{{VERSION}}</strong></p>
-        <p>Target Mesin   : <strong style='color:#fff;'>{{FOLDER}}</strong></p>
+    <div class='container'>
+      <div class='box'>
+        <h2>🏗️ Wanara Seta - Gate Portal</h2>
+        <div class='info-text'>
+          Versi Firmware: <strong style='color:#00ff88;'>{{VERSION}}</strong><span class='version-badge'>{{FOLDER}}</span>
+        </div>
+
+        <hr>
+        <h3>🔌 Status Hardware</h3>
+        <div class='status-container'>
+          <div class='status-row'>
+            <span class='status-label'>📡 RFID Sensor</span>
+            <span class='status-value {{RFID_CLASS}}'>{{RFID_STATUS}}</span>
+          </div>
+          <div class='status-row'>
+            <span class='status-label'>🌐 Ethernet</span>
+            <span class='status-value {{ETH_CLASS}}'>{{ETH_STATUS}}</span>
+          </div>
+          <div class='status-row'>
+            <span class='status-label'>📶 MQTT Broker</span>
+            <span class='status-value {{MQTT_CLASS}}'>{{MQTT_STATUS}}</span>
+          </div>
+          <div class='status-row'>
+            <span class='status-label'>💳 Scan Terakhir</span>
+            <span class='status-value' style='color:#64b5f6;'>{{LAST_RFID}}</span>
+          </div>
+        </div>
+
+        <hr>
+        <h3>⚙️ Pengaturan Mesin/Board</h3>
+        <form action='/save_folder' method='POST'>
+          <label style='display:block; margin-bottom:8px; color:#aaa; font-size:13px;'>Pilih Target Board:</label>
+          <select name='folder_name'>
+            <option value='ESP32main' {{SEL_ESP32MAIN}}>🔵 Mesin ESP32 (ESP32main)</option>
+            <option value='ESP32_test' {{SEL_ESP32TEST}}>🟦 Mesin ESP32 Test (ESP32_test)</option>
+            <option value='WT32main' {{SEL_WT32MAIN}}>🟪 Mesin WT32 (WT32main)</option>
+            <option value='WT32_test' {{SEL_WT32TEST}}>🟧 Mesin WT32 Test (WT32_test)</option>
+            <option value='src_mainOTA' {{SEL_SRCMAINOTA}}>🟨 Main OTA (src_mainOTA)</option>
+          </select>
+          <input type='submit' class='btn-orange' value='💾 SIMPAN & RESTART'>
+        </form>
+
+        <hr>
+        <h3>🖧 Pengaturan MQTT Broker</h3>
+        <form action='/save_mqtt' method='POST'>
+          <input type='text' name='mqtt_server' placeholder='IP Server (contoh: 192.168.4.50)' value='{{MQTT_SERVER}}' required>
+          <input type='number' name='mqtt_port' placeholder='Port (contoh: 1883)' value='{{MQTT_PORT}}' required>
+          <input type='text' name='mqtt_user' placeholder='Username MQTT' value='{{MQTT_USER}}' required>
+          <input type='password' name='mqtt_pass' placeholder='Password MQTT' value='{{MQTT_PASS}}'>
+          <input type='text' name='mqtt_client_id' placeholder='Client ID (contoh: Gate_02)' value='{{MQTT_CLIENT_ID}}' required>
+          <input type='submit' class='btn-orange' value='💾 SIMPAN MQTT & RESTART'>
+        </form>
+
+        <hr>
+        <form action='/cek_update' method='GET'>
+          <input type='submit' class='btn-blue' value='🔄 CEK UPDATE GITHUB'>
+        </form>
       </div>
-
-      <hr>
-      <h3>Status Hardware</h3>
-      <div class='info-text' style='text-align:left; background:#252525; padding:10px; border-radius:6px;'>
-        <p>📡 RFID Sensor: <strong style='color:{{RFID_COLOR}};'>{{RFID_STATUS}}</strong></p>
-        <p>💳 Scan Terakhir: <strong style='color:#00ff00;'>{{LAST_RFID}}</strong></p>
+      
+      <div style='text-align:center; color:#666; font-size:12px; margin-top:20px;'>
+        <p>⏱️ Auto-refresh setiap 3 detik | Last Update: <span style='color:#00adb5;'>{{TIMESTAMP}}</span></p>
       </div>
-
-      <hr>
-      <h3>Pengaturan Mesin/Board</h3>
-      <form action='/save_folder' method='POST'>
-        <select name='folder_name'>
-          <option value='ESP32main' {{SEL_ESP32MAIN}}>Mesin ESP32 (ESP32main)</option>
-          <option value='ESP32_test' {{SEL_ESP32TEST}}>Mesin ESP32 Test (ESP32_test)</option>
-          <option value='WT32main' {{SEL_WT32MAIN}}>Mesin WT32 (WT32main)</option>
-          <option value='WT32_test' {{SEL_WT32TEST}}>Mesin WT32 Test (WT32_test)</option>
-          <option value='src_mainOTA' {{SEL_SRCMAINOTA}}>Main OTA (src_mainOTA)</option>
-        </select>
-        <input type='submit' class='btn-orange' value='SIMPAN PENGATURAN & RESTART'>
-      </form>
-
-      <hr>
-      <h3>Pengaturan MQTT Broker</h3>
-      <form action='/save_mqtt' method='POST'>
-        <input type='text' name='mqtt_server' placeholder='IP Server (contoh: 192.168.4.50)' value='{{MQTT_SERVER}}' required>
-        <input type='number' name='mqtt_port' placeholder='Port (contoh: 1883)' value='{{MQTT_PORT}}' required>
-        <input type='text' name='mqtt_user' placeholder='Username MQTT' value='{{MQTT_USER}}' required>
-        <input type='password' name='mqtt_pass' placeholder='Password MQTT' value='{{MQTT_PASS}}'>
-        <input type='text' name='mqtt_client_id' placeholder='Client ID (contoh: Gate_02)' value='{{MQTT_CLIENT_ID}}' required>
-        <input type='submit' class='btn-orange' value='SIMPAN MQTT & RESTART'>
-      </form>
-
-      <hr>
-      <form action='/cek_update' method='GET'>
-        <input type='submit' class='btn-blue' value='CEK UPDATE GITHUB SEKARANG'>
-      </form>
     </div>
   </body>
   </html>
@@ -259,7 +298,11 @@ void handleRoot() {
   html.replace("{{SEL_SRCMAINOTA}}", folderAktif == "src_mainOTA" ? "selected" : "");
   
   html.replace("{{RFID_STATUS}}", rfidStatus);
-  html.replace("{{RFID_COLOR}}", rfidStatus == "AKTIF" ? "#00ff00" : "#ff5252");
+  html.replace("{{RFID_CLASS}}", rfidStatus.indexOf("✅") != -1 ? "" : "error");
+  html.replace("{{ETH_STATUS}}", eth_connected ? "✅ Terhubung" : "❌ Terputus");
+  html.replace("{{ETH_CLASS}}", eth_connected ? "" : "error");
+  html.replace("{{MQTT_STATUS}}", mqttClient.connected() ? "✅ Terhubung" : "⚠️ Offline");
+  html.replace("{{MQTT_CLASS}}", mqttClient.connected() ? "" : "warning");
   html.replace("{{LAST_RFID}}", lastRfidScan);
 
   html.replace("{{MQTT_SERVER}}", mqtt_server);
@@ -267,6 +310,13 @@ void handleRoot() {
   html.replace("{{MQTT_USER}}", mqtt_user);
   html.replace("{{MQTT_PASS}}", mqtt_pass);
   html.replace("{{MQTT_CLIENT_ID}}", mqtt_client_id);
+  
+  // Timestamp update
+  time_t now = time(nullptr);
+  struct tm timeinfo = *localtime(&now);
+  char timestamp[20];
+  strftime(timestamp, sizeof(timestamp), "%H:%M:%S", &timeinfo);
+  html.replace("{{TIMESTAMP}}", String(timestamp));
 
   server.send(200, "text/html", html);
 }
@@ -278,7 +328,7 @@ void handleSaveFolder() {
     preferences.putString("ota_folder", newFolder);
     preferences.end();
 
-    String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Target mesin diubah ke: " + newFolder + "</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
+    String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Target mesin diubah ke: " + newFolder + "</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
     server.send(200, "text/html", html);
     esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
     delay(2000);
@@ -302,7 +352,7 @@ void handleSaveMqtt() {
     preferences.putString("mqtt_client_id", mqtt_client_id);
     preferences.end();
 
-    String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Pengaturan MQTT Disimpan!</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
+    String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='5;url=/'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .btn-orange{background:#ff9f43;color:#121212;padding:12px 20px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;margin-top:20px;}</style></head><body><h2 style='color:#00adb5;'>Pengaturan MQTT Disimpan!</h2><p>Sistem sedang di-restart (Otomatis kembali dalam 5 detik)...</p><a href='/' class='btn-orange'>KEMBALI KE DASHBOARD</a></body></html>";
     server.send(200, "text/html", html);
     esp_task_wdt_delete(xTaskGetCurrentTaskHandle()); 
     delay(2000);
@@ -311,7 +361,7 @@ void handleSaveMqtt() {
 }
 
 void handleCekUpdate() {
-  String html = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .loader{border:6px solid #1e1e1e;border-top:6px solid #00adb5;border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2 style='color:#00adb5;'>Menghubungi GitHub...</h2><div class='loader'></div><p>Sistem sedang memproses OTA, mohon tunggu sebentar...</p></body></html>";
+  String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#121212;color:#fff;text-align:center;padding:50px;font-family:Arial;} .loader{border:6px solid #1e1e1e;border-top:6px solid #00adb5;border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2 style='color:#00adb5;'>Menghubungi GitHub...</h2><div class='loader'></div><p>Sistem sedang memproses OTA, mohon tunggu sebentar...</p></body></html>";
   server.send(200, "text/html", html);
 }
 
@@ -323,6 +373,7 @@ void handleDoUpdate() {
   <!DOCTYPE html>
   <html>
   <head>
+    <meta charset='UTF-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
     <style>
       body { background-color: #121212; color: #ffffff; font-family: Arial, sans-serif; text-align: center; padding: 20px; }
@@ -505,12 +556,16 @@ void setup() {
 
   // Cek apakah RFID terdeteksi dengan membaca register versi chip
   byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
-  if (v == 0x91 || v == 0x92) {
-    rfidStatus = "AKTIF";
+  Serial.print("[RFID] Version Register: 0x");
+  Serial.println(v, HEX);
+  
+  if ((v >= 0x80 && v <= 0xFF) && v != 0x00) {
+    rfidStatus = "✅ AKTIF";
+    Serial.println("[RFID] Sensor MFRC522 Terdeteksi dan Siap!");
   } else {
-    rfidStatus = "TIDAK TERDETEKSI (Cek Kabel)";
+    rfidStatus = "❌ TIDAK TERDETEKSI (Cek Kabel)";
+    Serial.println("[RFID] PERHATIAN: Sensor MFRC522 tidak merespons!");
   }
-  Serial.println("[RFID] Sensor MFRC522 Siap.");
 
   // Setup Barcode Scanner (UART2)
   Serial2.begin(BARCODE_BAUD, SERIAL_8N1, BARCODE_RX, BARCODE_TX);
