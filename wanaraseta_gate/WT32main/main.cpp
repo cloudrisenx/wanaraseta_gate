@@ -17,7 +17,7 @@
 // 1. ZONA KONFIGURASI UTAMA (EDIT PENGATURAN HANYA DI BAGIAN INI)
 // ========================================================================
 
-#define APP_VERSION         "2.1"               // Ganti angka ini setiap ada fitur baru!
+#define APP_VERSION         "2.4"               // Ganti angka ini setiap ada fitur baru!
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub kamu
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository kamu
 
@@ -553,7 +553,7 @@ void setup() {
   Serial.print("[RFID] Version Register: 0x");
   Serial.println(v, HEX);
   
-  if ((v >= 0x80 && v <= 0xFF) && v != 0x00) {
+  if (v == 0x91 || v == 0x92 || v == 0x88 || v == 0x82 || v == 0x12) {
     rfidStatus = "✅ AKTIF";
     Serial.println("[RFID] Sensor MFRC522 Terdeteksi dan Siap!");
   } else {
@@ -649,17 +649,32 @@ void loop() {
 
   // Logika Pembacaan RFID
   static unsigned long lastRFIDReadTime = 0;
+  static unsigned long lastRfidHealthCheck = 0;
 
+  // Perbaikan: Cek kesehatan sensor setiap 5 detik agar tidak "stuck"
+  if (millis() - lastRfidHealthCheck > 5000) {
+    byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
+    if (v == 0x00 || v == 0xFF) {
+      mfrc522.PCD_Init(); // Re-inisialisasi tanpa restart total
+      Serial.println("[RFID] Sensor tidak merespon, mencoba inisialisasi ulang...");
+    }
+    lastRfidHealthCheck = millis();
+  }
+
+  // Cek apakah ada kartu baru
   if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
-    if (millis() - lastRFIDReadTime > 1000) { // Cooldown 1 detik tanpa memblokir sistem
+    if (millis() - lastRFIDReadTime > 800) { // Cooldown dikurangi ke 800ms agar lebih cepat
       String rfidUid = "";
       for (byte i = 0; i < mfrc522.uid.size; i++) {
         rfidUid += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
         rfidUid += String(mfrc522.uid.uidByte[i], HEX);
       }
       rfidUid.toUpperCase();
-      Serial.println("[RFID] Kartu Terdeteksi! UID: " + rfidUid);
       lastRfidScan = rfidUid; // Simpan untuk ditampilkan di Web
+      Serial.println("[RFID] Terdeteksi: " + rfidUid);
+
+      // Trigger Relay 1 & LED Built-in (GPIO 2)
+      triggerRelay(1);
 
       // Cek apakah ini Kartu Master Hardcode (Bypass akses offline)
       if (rfidUid == "A166C820") {
