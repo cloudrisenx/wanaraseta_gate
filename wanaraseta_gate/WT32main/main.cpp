@@ -1,59 +1,59 @@
+#include "soc/rtc_cntl_reg.h" // Untuk kontrol Brownout
+#include "soc/soc.h"          // Untuk kontrol Brownout
 #include <Arduino.h>
-#include <WiFi.h>
+#include <ArduinoJson.h> // Library untuk parsing JSON
 #include <ETH.h>
-#include <WebServer.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
-#include <WiFiClientSecure.h>
-#include <esp_task_wdt.h>      // Untuk Task Watchdog Timer
-#include <Preferences.h>
-#include <SPI.h>
 #include <MFRC522.h>
-#include <Update.h>
+#include <Preferences.h>
 #include <PubSubClient.h>
-#include <ArduinoJson.h>       // Library untuk parsing JSON
-#include <time.h>              // Untuk timestamp
-#include "soc/soc.h"           // Untuk kontrol Brownout
-#include "soc/rtc_cntl_reg.h"  // Untuk kontrol Brownout
+#include <SPI.h>
+#include <Update.h>
+#include <WebServer.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <esp_task_wdt.h> // Untuk Task Watchdog Timer
+#include <time.h>         // Untuk timestamp
 
 // ========================================================================
 // 1. ZONA KONFIGURASI UTAMA
 // ========================================================================
 
-#define APP_VERSION         "3.1"               // Versi Firmware
-#define GITHUB_USER         "cloudrisenx"       // Username GitHub
-#define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository
+#define APP_VERSION "3.1"             // Versi Firmware
+#define GITHUB_USER "cloudrisenx"     // Username GitHub
+#define GITHUB_REPO "wanaraseta_gate" // Nama Repository
 
 #define RELAY1_PIN          2                   // Relay 1 (Gate In) / Built-in LED
 #define RELAY2_PIN          5                   // Relay 2 (Gate Out / Alarm)
-#define GATE_OPEN_MS        3000                // Durasi gerbang terbuka (3 detik)
+#define GATE_OPEN_MS 3000 // Durasi gerbang terbuka (3 detik)
 
 // Konfigurasi Watchdog Timer
-#define WDT_TIMEOUT_SECONDS 5                   // Timeout WDT 5 detik
+#define WDT_TIMEOUT_SECONDS 5 // Timeout WDT 5 detik
 
 // Konfigurasi Barcode Scanner (UART2)
-#define BARCODE_RX          39
-#define BARCODE_TX          33
-#define BARCODE_BAUD        9600
+#define BARCODE_RX 39
+#define BARCODE_TX 33
+#define BARCODE_BAUD 9600
 
 // Konfigurasi Pin Ethernet WT32-ETH01 (LAN8720)
-#define WT32_ETH_ADDR       1
-#define WT32_ETH_POWER      16
-#define WT32_ETH_MDC        23
-#define WT32_ETH_MDIO       18
-#define WT32_ETH_TYPE       ETH_PHY_LAN8720
-#define WT32_ETH_CLK        ETH_CLOCK_GPIO0_IN
+#define WT32_ETH_ADDR 1
+#define WT32_ETH_POWER 16
+#define WT32_ETH_MDC 23
+#define WT32_ETH_MDIO 18
+#define WT32_ETH_TYPE ETH_PHY_LAN8720
+#define WT32_ETH_CLK ETH_CLOCK_GPIO0_IN
 
 // Konfigurasi Pin SPI & RFID MFRC522
-#define SS_PIN              12
-#define RST_PIN             4
-#define SPI_SCK             14
-#define SPI_MISO            35                  // Input Only pada ESP32
-#define SPI_MOSI            15
+#define SS_PIN 12
+#define RST_PIN 4
+#define SPI_SCK 14
+#define SPI_MISO 35 // Input Only pada ESP32
+#define SPI_MOSI 15
 
 // Cooldown Pembacaan RFID (Milidetik)
-#define COOLDOWN_SAME_CARD_MS 3000              // Cooldown untuk kartu yang sama
-#define COOLDOWN_ANY_CARD_MS  500               // Cooldown minimal antar scan kartu apa saja
+#define COOLDOWN_SAME_CARD_MS 3000 // Cooldown untuk kartu yang sama
+#define COOLDOWN_ANY_CARD_MS 500   // Cooldown minimal antar scan kartu apa saja
 
 // ========================================================================
 // 2. VARIABEL GLOBAL & INSTANSIASI
@@ -67,18 +67,18 @@ WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
 // Konfigurasi MQTT Default (Akan ditimpa oleh preferensi yang tersimpan)
-String mqtt_server     = "127.0.0.1";
-int    mqtt_port       = 1883;
-String mqtt_user       = "gate_wt32_01";
-String mqtt_pass       = "11223344";
-String mqtt_client_id  = "gate_wt32_01";
+String mqtt_server = "127.0.0.1";
+int mqtt_port = 1883;
+String mqtt_user = "gate_wt32_01";
+String mqtt_pass = "11223344";
+String mqtt_client_id = "gate_wt32_01";
 
-String folderAktif     = "WT32main";
-bool eth_connected     = false;
+String folderAktif = "WT32main";
+bool eth_connected = false;
 
-String rfidStatus      = "Mencari Sensor...";
-String lastRfidScan    = "";
-String lastScannedUid  = "";
+String rfidStatus = "Mencari Sensor...";
+String lastRfidScan = "";
+String lastScannedUid = "";
 unsigned long lastScannedTime = 0;
 
 // Status & Timer Relay
@@ -101,16 +101,16 @@ void handleGate();
 // ========================================================================
 void WiFiEvent(WiFiEvent_t event) {
   switch (event) {
-    case ARDUINO_EVENT_ETH_GOT_IP:
-      Serial.println("[ETH] Terhubung! IP: " + ETH.localIP().toString());
-      eth_connected = true;
-      break;
-    case ARDUINO_EVENT_ETH_DISCONNECTED:
-      Serial.println("[ETH] Kabel Terputus!");
-      eth_connected = false;
-      break;
-    default:
-      break;
+  case ARDUINO_EVENT_ETH_GOT_IP:
+    Serial.println("[ETH] Terhubung! IP: " + ETH.localIP().toString());
+    eth_connected = true;
+    break;
+  case ARDUINO_EVENT_ETH_DISCONNECTED:
+    Serial.println("[ETH] Kabel Terputus!");
+    eth_connected = false;
+    break;
+  default:
+    break;
   }
 }
 
@@ -118,54 +118,53 @@ void WiFiEvent(WiFiEvent_t event) {
 // 4. KONTROL POWER-SAVING & ANTI-BROWNOUT
 // ========================================================================
 void prepareForOTA() {
-  Serial.println("[OTA] Menyiapkan sistem untuk update (Mode Hemat Daya & Anti-Brownout)...");
-  
+  Serial.println("[OTA] Menyiapkan sistem untuk update (Mode Hemat Daya & "
+                 "Anti-Brownout)...");
+
   // 1. Matikan relay agar tidak membebani daya
   digitalWrite(RELAY1_PIN, LOW);
   digitalWrite(RELAY2_PIN, LOW);
   isRelay1Active = false;
   isRelay2Active = false;
-  
+
   // 2. Putuskan MQTT dan bersihkan koneksi socket untuk membebaskan RAM
   if (mqttClient.connected()) {
     mqttClient.disconnect();
   }
   espClient.stop();
   delay(100);
-  
+
   // 3. Matikan antena RFID untuk memotong konsumsi arus
   mfrc522.PCD_AntennaOff();
   delay(50);
-  
+
   // 4. Nonaktifkan detektor Brownout secara software
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   delay(50);
-  
+
   // 5. Nonaktifkan Watchdog Timer (WDT) agar tidak reset saat flashing
-  esp_task_wdt_delete(NULL); 
+  esp_task_wdt_delete(NULL);
   yield();
 }
 
 void restoreAfterOTA() {
   Serial.println("[OTA] Mengembalikan konfigurasi daya & WDT...");
-  
+
   // 1. Aktifkan kembali detektor Brownout
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 1);
   delay(10);
-  
-  // 2. Aktifkan kembali Watchdog Timer (WDT)
-  #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
-    esp_task_wdt_config_t twdt_config = {
-        .timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
-        .idle_core_mask = 0,
-        .trigger_panic = true
-    };
-    esp_task_wdt_reconfigure(&twdt_config);
-  #else
-    esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true); 
-  #endif
+
+// 2. Aktifkan kembali Watchdog Timer (WDT)
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+  esp_task_wdt_config_t twdt_config = {.timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
+                                       .idle_core_mask = 0,
+                                       .trigger_panic = true};
+  esp_task_wdt_reconfigure(&twdt_config);
+#else
+  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+#endif
   esp_task_wdt_add(NULL);
-  
+
   // 3. Aktifkan kembali antena RFID
   mfrc522.PCD_AntennaOn();
 }
@@ -176,22 +175,29 @@ void restoreAfterOTA() {
 void cekUpdateGitHub(bool fromWeb) {
   auto logMsg = [&](String msg) {
     Serial.print(msg);
-    if (fromWeb) server.sendContent(msg);
+    if (fromWeb)
+      server.sendContent(msg);
   };
 
   logMsg("[OTA] Memeriksa update di cabang GitHub: main\n");
   String folderPath = folderAktif;
-  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/wanaraseta_gate/" + folderPath + "/version.txt";
-  String urlFirmware = String("https://raw.githubusercontent.com/") + GITHUB_USER + "/" + GITHUB_REPO + "/main/wanaraseta_gate/" + folderPath + "/firmware.bin";
+  String urlVersi = String("https://raw.githubusercontent.com/") + GITHUB_USER +
+                    "/" + GITHUB_REPO + "/main/wanaraseta_gate/" + folderPath +
+                    "/version.txt";
+  String urlFirmware = String("https://raw.githubusercontent.com/") +
+                       GITHUB_USER + "/" + GITHUB_REPO +
+                       "/main/wanaraseta_gate/" + folderPath + "/firmware.bin";
 
   bool doUpdate = false;
   String versiDiGitHub = "";
 
-  // Step 1: Cek Versi (Gunakan scope agar memory client secure dibebaskan setelah cek)
+  // Step 1: Cek Versi (Gunakan scope agar memory client secure dibebaskan
+  // setelah cek)
   {
     WiFiClientSecure client;
     client.setInsecure(); // Bypass SSL verification untuk menghemat RAM
-    // Catatan: setBufferSizes() dinonaktifkan di Core 3.0+ karena dialokasikan mbedtls secara otomatis
+    // Catatan: setBufferSizes() dinonaktifkan di Core 3.0+ karena dialokasikan
+    // mbedtls secara otomatis
 
     HTTPClient http;
     http.begin(client, urlVersi);
@@ -212,11 +218,12 @@ void cekUpdateGitHub(bool fromWeb) {
         logMsg("[OTA] >> Firmware sudah paling baru. Aman terkendali.\n");
       }
     } else {
-      logMsg("[OTA] >> Gagal menghubungi GitHub (HTTP: " + String(httpCode) + "). Periksa koneksi internet.\n");
+      logMsg("[OTA] >> Gagal menghubungi GitHub (HTTP: " + String(httpCode) +
+             "). Periksa koneksi internet.\n");
     }
     http.end();
   }
-  
+
   if (doUpdate) {
     // Jalankan shutdown peripheral & brownout
     prepareForOTA();
@@ -226,16 +233,17 @@ void cekUpdateGitHub(bool fromWeb) {
     updateClient.setInsecure();
 
     httpUpdate.rebootOnUpdate(true); // Otomatis restart setelah update sukses
-    
+
     t_httpUpdate_return ret = httpUpdate.update(updateClient, urlFirmware);
-    
+
     // Jika baris di bawah tereksekusi, berarti update GAGAL
     restoreAfterOTA();
 
     if (ret == HTTP_UPDATE_OK) {
       logMsg("\n[OTA] >> UPDATE SUKSES! Board akan restart otomatis.\n");
     } else {
-      logMsg("\n[OTA] >> GAGAL UPDATE: " + httpUpdate.getLastErrorString() + " (Code: " + String(httpUpdate.getLastError()) + ")\n");
+      logMsg("\n[OTA] >> GAGAL UPDATE: " + httpUpdate.getLastErrorString() +
+             " (Code: " + String(httpUpdate.getLastError()) + ")\n");
     }
   }
 }
@@ -972,15 +980,19 @@ void handleRoot() {
   server.sendHeader("Expires", "-1");
 
   String html = String(INDEX_HTML);
-  
+
   // Replace string template saat dimuat pertama kali
   html.replace("{{VERSION}}", APP_VERSION);
   html.replace("{{FOLDER}}", folderAktif);
-  html.replace("{{SEL_ESP32MAIN}}", folderAktif == "ESP32main" ? "selected" : "");
-  html.replace("{{SEL_ESP32TEST}}", folderAktif == "ESP32_test" ? "selected" : "");
+  html.replace("{{SEL_ESP32MAIN}}",
+               folderAktif == "ESP32main" ? "selected" : "");
+  html.replace("{{SEL_ESP32TEST}}",
+               folderAktif == "ESP32_test" ? "selected" : "");
   html.replace("{{SEL_WT32MAIN}}", folderAktif == "WT32main" ? "selected" : "");
-  html.replace("{{SEL_WT32TEST}}", folderAktif == "WT32_test" ? "selected" : "");
-  html.replace("{{SEL_SRCMAINOTA}}", folderAktif == "src_mainOTA" ? "selected" : "");
+  html.replace("{{SEL_WT32TEST}}",
+               folderAktif == "WT32_test" ? "selected" : "");
+  html.replace("{{SEL_SRCMAINOTA}}",
+               folderAktif == "src_mainOTA" ? "selected" : "");
 
   html.replace("{{MQTT_SERVER}}", mqtt_server);
   html.replace("{{MQTT_PORT}}", String(mqtt_port));
@@ -997,27 +1009,27 @@ void handleStatusData() {
   server.sendHeader("Expires", "-1");
 
   JsonDocument doc;
-  doc["version"]       = APP_VERSION;
-  doc["folder"]        = folderAktif;
-  doc["free_heap"]     = ESP.getFreeHeap();
+  doc["version"] = APP_VERSION;
+  doc["folder"] = folderAktif;
+  doc["free_heap"] = ESP.getFreeHeap();
   doc["min_free_heap"] = ESP.getMinFreeHeap();
-  doc["uptime"]        = millis() / 1000;
-  doc["rfid_status"]   = rfidStatus;
+  doc["uptime"] = millis() / 1000;
+  doc["rfid_status"] = rfidStatus;
 
   byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
   char verStr[10];
   sprintf(verStr, "0x%02X", v);
-  doc["rfid_version"]  = verStr;
-  doc["last_rfid"]     = lastRfidScan;
+  doc["rfid_version"] = verStr;
+  doc["last_rfid"] = lastRfidScan;
 
-  doc["eth_status"]    = eth_connected ? "Connected" : "Disconnected";
-  doc["eth_ip"]        = ETH.localIP().toString();
-  doc["mqtt_status"]   = mqttClient.connected() ? "Connected" : "Disconnected";
-  doc["mqtt_broker"]   = mqtt_server;
-  doc["mqtt_port"]     = mqtt_port;
-  doc["mqtt_client_id"]= mqtt_client_id;
-  doc["relay1"]        = isRelay1Active;
-  doc["relay2"]        = isRelay2Active;
+  doc["eth_status"] = eth_connected ? "Connected" : "Disconnected";
+  doc["eth_ip"] = ETH.localIP().toString();
+  doc["mqtt_status"] = mqttClient.connected() ? "Connected" : "Disconnected";
+  doc["mqtt_broker"] = mqtt_server;
+  doc["mqtt_port"] = mqtt_port;
+  doc["mqtt_client_id"] = mqtt_client_id;
+  doc["relay1"] = isRelay1Active;
+  doc["relay2"] = isRelay2Active;
 
   String output;
   serializeJson(doc, output);
@@ -1041,10 +1053,10 @@ void handleSaveFolder() {
 
 void handleSaveMqtt() {
   if (server.hasArg("mqtt_server")) {
-    mqtt_server    = server.arg("mqtt_server");
-    mqtt_port      = server.arg("mqtt_port").toInt();
-    mqtt_user      = server.arg("mqtt_user");
-    mqtt_pass      = server.arg("mqtt_pass");
+    mqtt_server = server.arg("mqtt_server");
+    mqtt_port = server.arg("mqtt_port").toInt();
+    mqtt_user = server.arg("mqtt_user");
+    mqtt_pass = server.arg("mqtt_pass");
     mqtt_client_id = server.arg("mqtt_client_id");
 
     preferences.begin("gate_config", false);
@@ -1088,7 +1100,20 @@ void handleReboot() {
 }
 
 void handleCekUpdate() {
-  String html = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><meta http-equiv='refresh' content='2;url=/do_update'><style>body{background:#0b0c10;color:#f3f4f6;text-align:center;padding:50px;font-family:sans-serif;} .loader{border:3px solid rgba(255,255,255,0.08);border-top:3px solid #6366f1;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:20px auto;} @keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</style></head><body><h2>Menghubungi GitHub...</h2><div class='loader'></div><p style='color:#9ca3af;'>Mengunduh manifest pembaruan secara secure...</p></body></html>";
+  String html =
+      "<html><head><meta charset='UTF-8'><meta name='viewport' "
+      "content='width=device-width, initial-scale=1'><meta "
+      "http-equiv='refresh' "
+      "content='2;url=/"
+      "do_update'><style>body{background:#0b0c10;color:#f3f4f6;text-align:"
+      "center;padding:50px;font-family:sans-serif;} .loader{border:3px solid "
+      "rgba(255,255,255,0.08);border-top:3px solid "
+      "#6366f1;border-radius:50%;width:40px;height:40px;animation:spin 1s "
+      "linear infinite;margin:20px auto;} @keyframes "
+      "spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}</"
+      "style></head><body><h2>Menghubungi GitHub...</h2><div "
+      "class='loader'></div><p style='color:#9ca3af;'>Mengunduh manifest "
+      "pembaruan secara secure...</p></body></html>";
   server.send(200, "text/html", html);
 }
 
@@ -1119,7 +1144,8 @@ void handleDoUpdate() {
 
   server.sendContent(htmlStart);
   cekUpdateGitHub(true);
-  server.sendContent("</pre><a href='/' class='btn'>KEMBALI KE DASHBOARD</a></div></body></html>");
+  server.sendContent("</pre><a href='/' class='btn'>KEMBALI KE "
+                     "DASHBOARD</a></div></body></html>");
   server.sendContent("");
 }
 
@@ -1127,7 +1153,8 @@ void handleDoUpdate() {
 void handleManualUpdate() {
   server.sendHeader("Connection", "close");
   if (Update.hasError()) {
-    server.send(500, "text/plain", String("Upload Error: ") + Update.errorString());
+    server.send(500, "text/plain",
+                String("Upload Error: ") + Update.errorString());
   } else {
     server.send(200, "text/plain", "OK");
     delay(1000);
@@ -1137,16 +1164,17 @@ void handleManualUpdate() {
 
 // Handler penulisan chunk file Manual Upload
 void handleManualUpload() {
-  HTTPUpload& upload = server.upload();
+  HTTPUpload &upload = server.upload();
   static bool hasError = false;
-  
+
   if (upload.status == UPLOAD_FILE_START) {
-    Serial.printf("[UPLOAD] Mulai upload manual: %s\n", upload.filename.c_str());
+    Serial.printf("[UPLOAD] Mulai upload manual: %s\n",
+                  upload.filename.c_str());
     hasError = false;
-    
+
     // Nonaktifkan peripheral dan brownout detector sebelum flashing manual
     prepareForOTA();
-    
+
     if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
       Update.printError(Serial);
       hasError = true;
@@ -1167,7 +1195,8 @@ void handleManualUpload() {
         hasError = true;
       }
     }
-    // Kembalikan konfigurasi jika update gagal (jika sukses board langsung restart)
+    // Kembalikan konfigurasi jika update gagal (jika sukses board langsung
+    // restart)
     if (hasError) {
       restoreAfterOTA();
     }
@@ -1207,7 +1236,7 @@ void handleGate() {
 // ========================================================================
 // 8. CALLBACK & KONEKSI MQTT
 // ========================================================================
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
+void mqttCallback(char *topic, byte *payload, unsigned int length) {
   String message = "";
   for (unsigned int i = 0; i < length; i++) {
     message += (char)payload[i];
@@ -1234,8 +1263,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     } else if (status == "invalid") {
       Serial.println("[AKSES] Ditolak! Alasan: " + doc["message"].as<String>());
     }
-  } 
-  else if (topicStr == cmdTopic) {
+  } else if (topicStr == cmdTopic) {
     String cmd = doc["command"];
     if (cmd == "open_gate") {
       Serial.println("[COMMAND] Perintah Buka Gerbang Utama!");
@@ -1245,7 +1273,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       triggerRelay(2);
     } else if (cmd == "reboot") {
       Serial.println("[COMMAND] Perintah Reboot dari server. Restarting...");
-      esp_task_wdt_delete(NULL); 
+      esp_task_wdt_delete(NULL);
       delay(1000);
       ESP.restart();
     }
@@ -1253,20 +1281,23 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 }
 
 void reconnectMQTT() {
-  Serial.printf("[MQTT] Melakukan koneksi ke broker EMQX %s:%d...\n", mqtt_server.c_str(), mqtt_port);
-  
-  // Set timeout kecil (1.2 detik) pada client agar reconnect tidak memblokir WDT
-  espClient.setTimeout(1200); 
+  Serial.printf("[MQTT] Melakukan koneksi ke broker EMQX %s:%d...\n",
+                mqtt_server.c_str(), mqtt_port);
 
-  if (mqttClient.connect(mqtt_client_id.c_str(), mqtt_user.c_str(), mqtt_pass.c_str())) {
+  // Set timeout kecil (1.2 detik) pada client agar reconnect tidak memblokir
+  // WDT
+  espClient.setTimeout(1200);
+
+  if (mqttClient.connect(mqtt_client_id.c_str(), mqtt_user.c_str(),
+                         mqtt_pass.c_str())) {
     Serial.println("[MQTT] Terhubung!");
-    
+
     String resTopic = "gate/" + mqtt_client_id + "/result";
     String cmdTopic = "gate/" + mqtt_client_id + "/command";
-    
+
     mqttClient.subscribe(resTopic.c_str());
     mqttClient.subscribe(cmdTopic.c_str());
-    
+
     Serial.println("[MQTT] Berhasil subscribe ke topik result & command.");
   } else {
     Serial.print("[MQTT] Gagal terhubung ke broker, rc=");
@@ -1283,17 +1314,18 @@ void setup() {
 
   // Ambil data konfigurasi dari memori internal (NVS)
   preferences.begin("gate_config", true);
-  folderAktif    = preferences.getString("ota_folder", "WT32main");
-  mqtt_server    = preferences.getString("mqtt_server", mqtt_server);
-  mqtt_port      = preferences.getInt("mqtt_port", mqtt_port);
-  mqtt_user      = preferences.getString("mqtt_user", mqtt_user);
-  mqtt_pass      = preferences.getString("mqtt_pass", mqtt_pass);
+  folderAktif = preferences.getString("ota_folder", "WT32main");
+  mqtt_server = preferences.getString("mqtt_server", mqtt_server);
+  mqtt_port = preferences.getInt("mqtt_port", mqtt_port);
+  mqtt_user = preferences.getString("mqtt_user", mqtt_user);
+  mqtt_pass = preferences.getString("mqtt_pass", mqtt_pass);
   mqtt_client_id = preferences.getString("mqtt_client_id", mqtt_client_id);
   preferences.end();
 
   // Inisialisasi Ethernet LAN8720
   WiFi.onEvent(WiFiEvent);
-  ETH.begin(WT32_ETH_ADDR, WT32_ETH_POWER, WT32_ETH_MDC, WT32_ETH_MDIO, WT32_ETH_TYPE, WT32_ETH_CLK);
+  ETH.begin(WT32_ETH_ADDR, WT32_ETH_POWER, WT32_ETH_MDC, WT32_ETH_MDIO,
+            WT32_ETH_TYPE, WT32_ETH_CLK);
 
   Serial.println("\n[ETH] Mencari koneksi LAN (DHCP)...");
 
@@ -1306,14 +1338,14 @@ void setup() {
   server.on("/reboot", HTTP_GET, handleReboot);
   server.on("/cek_update", HTTP_GET, handleCekUpdate);
   server.on("/do_update", HTTP_GET, handleDoUpdate);
-  
+
   // Handler Upload Manual
   server.on("/update", HTTP_POST, handleManualUpdate, handleManualUpload);
 
   server.begin();
 
   // Inisialisasi SPI & RFID MFRC522
-  SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SS_PIN); 
+  SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SS_PIN);
   mfrc522.PCD_Init();
 
   // Cek versi sensor saat awal boot
@@ -1334,21 +1366,19 @@ void setup() {
   // Setup MQTT Client
   mqttClient.setServer(mqtt_server.c_str(), mqtt_port);
   mqttClient.setCallback(mqttCallback);
-  mqttClient.setBufferSize(1024);        // Buffer JSON MQTT diperbesar
+  mqttClient.setBufferSize(1024); // Buffer JSON MQTT diperbesar
 
-  // Aktifkan Task Watchdog Timer
-  #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
-    esp_task_wdt_config_t twdt_config = {
-        .timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
-        .idle_core_mask = 0,
-        .trigger_panic = true
-    };
-    esp_task_wdt_reconfigure(&twdt_config);
-  #else
-    esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true); 
-  #endif
-  
-  esp_task_wdt_add(NULL); 
+// Aktifkan Task Watchdog Timer
+#if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+  esp_task_wdt_config_t twdt_config = {.timeout_ms = WDT_TIMEOUT_SECONDS * 1000,
+                                       .idle_core_mask = 0,
+                                       .trigger_panic = true};
+  esp_task_wdt_reconfigure(&twdt_config);
+#else
+  esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+#endif
+
+  esp_task_wdt_add(NULL);
 
   // Setup Pin Relay sebagai Output
   pinMode(RELAY1_PIN, OUTPUT);
@@ -1379,9 +1409,10 @@ void loop() {
     barcodeData.trim();
     if (barcodeData.length() > 0) {
       Serial.println("[BARCODE] Terdeteksi: " + barcodeData);
-      
+
       if (eth_connected && mqttClient.connected()) {
-        String payload = "{\"barcode\":\"" + barcodeData + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
+        String payload = "{\"barcode\":\"" + barcodeData +
+                         "\", \"device_id\":\"" + mqtt_client_id + "\"}";
         String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
         if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
           Serial.println("[MQTT] Barcode sukses terkirim.");
@@ -1402,21 +1433,21 @@ void loop() {
     byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
     if (v == 0x00 || v == 0xFF) {
       Serial.println("[RFID] Sensor hang/terputus! Melakukan hard reset...");
-      
+
       // Hardware Reset Pulsa via RST Pin
       digitalWrite(RST_PIN, LOW);
       pinMode(RST_PIN, OUTPUT);
       delay(20);
       digitalWrite(RST_PIN, HIGH);
       delay(50);
-      
+
       // Reset SPI bus
       SPI.end();
       SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SS_PIN);
-      
+
       mfrc522.PCD_Init();
       delay(50);
-      
+
       v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
       if (v != 0x00 && v != 0xFF) {
         rfidStatus = "✅ AKTIF (Dipulihkan)";
@@ -1442,10 +1473,11 @@ void loop() {
     rfidUid.toUpperCase();
 
     unsigned long now = millis();
-    
+
     // Cooldown logic cerdas
     bool isSameCard = (rfidUid == lastScannedUid);
-    bool withinSameCardCooldown = (now - lastScannedTime < COOLDOWN_SAME_CARD_MS);
+    bool withinSameCardCooldown =
+        (now - lastScannedTime < COOLDOWN_SAME_CARD_MS);
     bool withinAnyCardCooldown = (now - lastScannedTime < COOLDOWN_ANY_CARD_MS);
 
     if (isSameCard && withinSameCardCooldown) {
@@ -1458,9 +1490,9 @@ void loop() {
       mfrc522.PCD_StopCrypto1();
     } else {
       // Proses Validasi Kartu
-      lastScannedUid  = rfidUid;
+      lastScannedUid = rfidUid;
       lastScannedTime = now;
-      lastRfidScan    = rfidUid;
+      lastRfidScan = rfidUid;
       Serial.println("[RFID] Kartu Terdeteksi: " + rfidUid);
 
       // Bypass jika master card
@@ -1469,10 +1501,11 @@ void loop() {
         triggerRelay(1);
       } else {
         triggerRelay(1); // Buka gerbang utama (LED)
-        
+
         // Kirim data scan ke MQTT Broker
         if (eth_connected && mqttClient.connected()) {
-          String payload = "{\"rfid\":\"" + rfidUid + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
+          String payload = "{\"rfid\":\"" + rfidUid + "\", \"device_id\":\"" +
+                           mqtt_client_id + "\"}";
           String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
           if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
             Serial.println("[MQTT] Data scan terkirim ke EMQX.");
