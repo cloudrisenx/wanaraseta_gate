@@ -22,7 +22,7 @@ def copy_bin(source, target, env):
     shutil.copyfile(bin_path, target_file)
     
     print("\n=======================================================")
-    print(f"✅ AUTO-COPY SUKSES BOSS!")
+    print(f"[OK] AUTO-COPY SUKSES BOSS!")
     print(f"File hasil build langsung dimasukkan ke folder: {nama_folder}/firmware.bin")
     print("=======================================================\n")
 
