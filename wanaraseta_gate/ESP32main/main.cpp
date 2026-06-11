@@ -31,6 +31,10 @@
 #define RELAY2_PIN          27                  // Relay 2 (Gate Out / Alarm)
 #define GATE_OPEN_MS        3000                // Durasi gerbang terbuka (3 detik)
 
+// Konfigurasi Level Logika Relay (Active-LOW)
+#define RELAY_ACTIVE        LOW
+#define RELAY_DEACTIVE      HIGH
+
 // Konfigurasi Watchdog Timer
 #define WDT_TIMEOUT_SECONDS 5                   // Timeout WDT 5 detik
 
@@ -72,8 +76,14 @@ String mqtt_client_id  = "gate_esp32_01";
 String folderAktif     = "ESP32main";
 String savedApSSID     = DEFAULT_AP_SSID;
 
+// Penundaan restart untuk respon HTTP bersih
+bool pendingRestart = false;
+unsigned long restartTime = 0;
+
 String rfidStatus      = "Mencari Sensor...";
 String lastRfidScan    = "";
+String lastBarcodeScan = "";
+String rfid_master     = "A166C820";
 String lastScannedUid  = "";
 unsigned long lastScannedTime = 0;
 
@@ -99,8 +109,8 @@ void prepareForOTA() {
   Serial.println("[OTA] Menyiapkan sistem untuk update (Mode Hemat Daya & Anti-Brownout)...");
   
   // 1. Matikan relay agar tidak membebani daya
-  digitalWrite(RELAY1_PIN, LOW);
-  digitalWrite(RELAY2_PIN, LOW);
+  digitalWrite(RELAY1_PIN, RELAY_DEACTIVE);
+  digitalWrite(RELAY2_PIN, RELAY_DEACTIVE);
   isRelay1Active = false;
   isRelay2Active = false;
   
@@ -572,6 +582,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
       </div>
 
+      <!-- Card Barcode Scanner -->
+      <div class="card">
+        <h3 class="card-title">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5v14M7 5v14M11 5v14M15 5v14M17 5v14M21 5v14"></path></svg>
+          Barcode Scanner (UART2)
+        </h3>
+        <div class="status-list">
+          <div class="status-item">
+            <span class="status-label">Status Koneksi</span>
+            <span class="status-value text-green" id="barcode-status-val">
+              <span class="status-indicator indicator-green" id="barcode-status-ind"></span>
+              ✅ AKTIF
+            </span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">Scan Barcode Terakhir</span>
+            <span class="status-value mono" id="last-barcode" style="color: #10b981;">Belum ada barcode</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Card Jaringan WiFi & MQTT -->
       <div class="card">
         <h3 class="card-title">
@@ -687,7 +718,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
           </div>
           <div class="form-group">
             <label>Username MQTT</label>
-            <input type="text" name="mqtt_user" class="form-control" value="{{MQTT_USER}}" required>
+            <input type="text" name="mqtt_user" class="form-control" value="{{MQTT_USER}}">
           </div>
           <div class="form-group">
             <label>Password MQTT</label>
@@ -698,6 +729,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <input type="text" name="mqtt_client_id" class="form-control" value="{{MQTT_CLIENT_ID}}" required>
           </div>
           <button type="submit" class="btn">Simpan MQTT & Restart</button>
+        </form>
+      </div>
+
+      <!-- Card Konfigurasi Kartu Master -->
+      <div class="card">
+        <h3 class="card-title">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+          Pengaturan Kartu Master (Bypass)
+        </h3>
+        <form id="form-master">
+          <div class="form-group">
+            <label>UID Kartu Master</label>
+            <input type="text" name="rfid_master" class="form-control" placeholder="A166C820" value="{{RFID_MASTER}}" required>
+          </div>
+          <button type="submit" class="btn">Simpan Master & Restart</button>
         </form>
       </div>
 
@@ -768,6 +814,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
       document.getElementById('rfid-version').innerText = data.rfid_version;
       document.getElementById('last-rfid').innerText = data.last_rfid || 'Belum ada kartu';
+      document.getElementById('last-barcode').innerText = data.last_barcode || 'Belum ada barcode';
 
       // WiFi UI
       let wifiVal = document.getElementById('wifi-status-val');
@@ -895,6 +942,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       .catch(() => showToast('Gagal menyimpan MQTT', false));
     });
 
+    document.getElementById('form-master').addEventListener('submit', function(e) {
+      e.preventDefault();
+      fetch('/save_master', {
+        method: 'POST',
+        body: new URLSearchParams(new FormData(this))
+      })
+      .then(() => showOverlay('Menyimpan Kartu Master', 'Menerapkan UID kartu master baru', 8))
+      .catch(() => showToast('Gagal menyimpan kartu master', false));
+    });
+
     document.getElementById('file-input').addEventListener('change', function() {
       let label = this.files.length > 0 ? this.files[0].name : 'Seret file ke sini atau klik untuk memilih';
       document.getElementById('file-name-display').innerText = label;
@@ -978,6 +1035,7 @@ void handleRoot() {
   html.replace("{{MQTT_USER}}", mqtt_user);
   html.replace("{{MQTT_PASS}}", mqtt_pass);
   html.replace("{{MQTT_CLIENT_ID}}", mqtt_client_id);
+  html.replace("{{RFID_MASTER}}", rfid_master);
 
   server.send(200, "text/html", html);
 }
@@ -1000,6 +1058,7 @@ void handleStatusData() {
   sprintf(verStr, "0x%02X", v);
   doc["rfid_version"]  = verStr;
   doc["last_rfid"]     = lastRfidScan;
+  doc["last_barcode"]  = lastBarcodeScan;
 
   bool wifiCon = (WiFi.status() == WL_CONNECTED);
   doc["wifi_status"]   = wifiCon ? "Connected" : "Disconnected";
@@ -1027,8 +1086,8 @@ void handleSaveFolder() {
     preferences.end();
 
     server.send(200, "text/plain", "OK");
-    delay(1000);
-    ESP.restart();
+    pendingRestart = true;
+    restartTime = millis();
   } else {
     server.send(400, "text/plain", "Bad Request");
   }
@@ -1051,8 +1110,26 @@ void handleSaveMqtt() {
     preferences.end();
 
     server.send(200, "text/plain", "OK");
-    delay(1000);
-    ESP.restart();
+    pendingRestart = true;
+    restartTime = millis();
+  } else {
+    server.send(400, "text/plain", "Bad Request");
+  }
+}
+
+void handleSaveMaster() {
+  if (server.hasArg("rfid_master")) {
+    rfid_master = server.arg("rfid_master");
+    rfid_master.toUpperCase();
+    rfid_master.trim();
+
+    preferences.begin("gate_config", false);
+    preferences.putString("rfid_master", rfid_master);
+    preferences.end();
+
+    server.send(200, "text/plain", "OK");
+    pendingRestart = true;
+    restartTime = millis();
   } else {
     server.send(400, "text/plain", "Bad Request");
   }
@@ -1078,8 +1155,8 @@ void handleTriggerRelay() {
 
 void handleReboot() {
   server.send(200, "text/plain", "Rebooting");
-  delay(1000);
-  ESP.restart();
+  pendingRestart = true;
+  restartTime = millis();
 }
 
 void handleCekUpdate() {
@@ -1176,12 +1253,12 @@ void triggerRelay(int relayNum) {
   if (relayNum == 1) {
     isRelay1Active = true;
     relay1ActiveTime = millis();
-    digitalWrite(RELAY1_PIN, HIGH);
+    digitalWrite(RELAY1_PIN, RELAY_ACTIVE);
     Serial.println("[GATE] Relay 1 Aktif (Gerbang Terbuka)");
   } else if (relayNum == 2) {
     isRelay2Active = true;
     relay2ActiveTime = millis();
-    digitalWrite(RELAY2_PIN, HIGH);
+    digitalWrite(RELAY2_PIN, RELAY_ACTIVE);
     Serial.println("[GATE] Relay 2 Aktif (Alarm/Aux Terbuka)");
   }
 }
@@ -1189,12 +1266,12 @@ void triggerRelay(int relayNum) {
 void handleGate() {
   if (isRelay1Active && (millis() - relay1ActiveTime > GATE_OPEN_MS)) {
     isRelay1Active = false;
-    digitalWrite(RELAY1_PIN, LOW);
+    digitalWrite(RELAY1_PIN, RELAY_DEACTIVE);
     Serial.println("[GATE] Relay 1 Mati (Gerbang Tertutup)");
   }
   if (isRelay2Active && (millis() - relay2ActiveTime > GATE_OPEN_MS)) {
     isRelay2Active = false;
-    digitalWrite(RELAY2_PIN, LOW);
+    digitalWrite(RELAY2_PIN, RELAY_DEACTIVE);
     Serial.println("[GATE] Relay 2 Mati (Alarm/Aux Tertutup)");
   }
 }
@@ -1252,7 +1329,14 @@ void reconnectMQTT() {
   
   espClient.setTimeout(1200); 
 
-  if (mqttClient.connect(mqtt_client_id.c_str(), mqtt_user.c_str(), mqtt_pass.c_str())) {
+  bool connected = false;
+  if (mqtt_user.length() > 0) {
+    connected = mqttClient.connect(mqtt_client_id.c_str(), mqtt_user.c_str(), mqtt_pass.c_str());
+  } else {
+    connected = mqttClient.connect(mqtt_client_id.c_str());
+  }
+
+  if (connected) {
     Serial.println("[MQTT] Terhubung!");
     
     String resTopic = "gate/" + mqtt_client_id + "/result";
@@ -1284,6 +1368,7 @@ void setup() {
   mqtt_user      = preferences.getString("mqtt_user", mqtt_user);
   mqtt_pass      = preferences.getString("mqtt_pass", mqtt_pass);
   mqtt_client_id = preferences.getString("mqtt_client_id", mqtt_client_id);
+  rfid_master    = preferences.getString("rfid_master", rfid_master);
   preferences.end();
 
   // Inisialisasi WiFi Manager
@@ -1296,6 +1381,7 @@ void setup() {
   server.on("/status_data", HTTP_GET, handleStatusData);
   server.on("/save_folder", HTTP_POST, handleSaveFolder);
   server.on("/save_mqtt", HTTP_POST, handleSaveMqtt);
+  server.on("/save_master", HTTP_POST, handleSaveMaster);
   server.on("/trigger_relay", HTTP_GET, handleTriggerRelay);
   server.on("/reboot", HTTP_GET, handleReboot);
   server.on("/cek_update", HTTP_GET, handleCekUpdate);
@@ -1347,8 +1433,8 @@ void setup() {
   // Setup Pin Relay sebagai Output
   pinMode(RELAY1_PIN, OUTPUT);
   pinMode(RELAY2_PIN, OUTPUT);
-  digitalWrite(RELAY1_PIN, LOW);
-  digitalWrite(RELAY2_PIN, LOW);
+  digitalWrite(RELAY1_PIN, RELAY_DEACTIVE);
+  digitalWrite(RELAY2_PIN, RELAY_DEACTIVE);
 
   // Cek pembaruan firmware 1x saat booting
   cekUpdateGitHub();
@@ -1357,6 +1443,11 @@ void setup() {
 void loop() {
   server.handleClient(); // Jaga agar server web tetap responsif
   esp_task_wdt_reset();  // Reset WDT
+
+  // Tangani restart tertunda agar respon HTTP terkirim bersih ke browser
+  if (pendingRestart && (millis() - restartTime > 2000)) {
+    ESP.restart();
+  }
 
   // Jaga koneksi MQTT tetap terhubung
   bool wifiConnected = (WiFi.status() == WL_CONNECTED);
@@ -1377,9 +1468,10 @@ void loop() {
     barcodeData.trim();
     if (barcodeData.length() > 0) {
       Serial.println("[BARCODE] Terdeteksi: " + barcodeData);
+      lastBarcodeScan = barcodeData;
       
       if (wifiConnected && mqttClient.connected()) {
-        String payload = "{\"barcode\":\"" + barcodeData + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
+        String payload = "{\"barcode\":\"" + barcodeData + "\", \"rfid\":\"" + barcodeData + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
         String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
         if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
           Serial.println("[MQTT] Barcode sukses terkirim.");
@@ -1462,7 +1554,7 @@ void loop() {
       Serial.println("[RFID] Kartu Terdeteksi: " + rfidUid);
 
       // Bypass jika master card
-      if (rfidUid == "A166C820") {
+      if (rfidUid == rfid_master) {
         Serial.println("[MASTER] Master Card terdeteksi! Bypass buka gerbang.");
         triggerRelay(1);
       } else {

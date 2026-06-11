@@ -429,7 +429,11 @@ void reconnectMQTT() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
+  Serial.println("\n==================================================");
+  Serial.println("   [MODE TEST BARCODE] WiFi & MQTT DINONAKTIFKAN  ");
+  Serial.println("==================================================");
 
+#if 0 // Ganti jadi 1 untuk mengaktifkan WiFi, Web Server, & RFID kembali
   // Ambil data folder aktif dan nama AP WiFi dari memori internal
   preferences.begin("gate_config", true);
   folderAktif = preferences.getString("ota_folder", "ESP32main");
@@ -461,11 +465,13 @@ void setup() {
   SPI.begin(); // Otomatis menggunakan VSPI ESP32 (SCK=18, MISO=19, MOSI=23)
   mfrc522.PCD_Init();
   Serial.println("[RFID] Sensor MFRC522 Siap.");
+#endif
 
   // Setup Barcode Scanner (UART2)
   Serial2.begin(BARCODE_BAUD, SERIAL_8N1, BARCODE_RX, BARCODE_TX);
   Serial.println("[BARCODE] Scanner UART2 Siap (GPIO 16/17).");
 
+#if 0 // Ganti jadi 1 untuk mengaktifkan MQTT & WDT kembali
   // Setup MQTT Broker
   mqttClient.setServer(mqtt_server.c_str(), mqtt_port);
   mqttClient.setCallback(mqttCallback); // Daftarkan fungsi callback
@@ -484,16 +490,14 @@ void setup() {
   #endif
   
   esp_task_wdt_add(NULL); 
-
-  // Auto cek pembaruan saat boot dimatikan sesuai permintaan
-  // cekUpdateGitHub(); 
-  // (Proses download dan restart akan dieksekusi otomatis oleh loop() jika ada update)
+#endif
 
   // Setup Pin LED sebagai Output
   pinMode(LED_PIN, OUTPUT);
 }
 
 void loop() {
+#if 0 // Ganti jadi 1 untuk mengaktifkan proses WebServer, WDT, & MQTT kembali
   server.handleClient(); // Jaga agar server web tetap responsif
 
   // Beri makan Task Watchdog Timer agar tidak reset
@@ -511,42 +515,47 @@ void loop() {
       mqttClient.loop();
     }
   }
+#endif
 
-  // Timer OTA otomatis dimatikan: update HANYA saat diklik dari Web Dashboard
-  // static unsigned long lastCheck = 0;
-  // if (millis() - lastCheck > UPDATE_INTERVAL_MS) { 
-  //   cekUpdateGitHub();
-  //   lastCheck = millis();
-  // }
+  // Logika Pembacaan Barcode (UART2) - Non-Blocking & Anti-Timeout (Mode Debug)
+  static String barcodeBuffer = "";
+  static unsigned long lastBarcodeCharTime = 0;
+  const unsigned long barcodeTimeoutMs = 50; // Batas jeda waktu antar karakter (ms)
 
-  // ---------------------------------------------------------
-  // MASUKKAN LOGIKA RFID, KONTROL GERBANG & EMQX DI SINI
-  // ---------------------------------------------------------
-
-  // Logika Pembacaan Barcode (UART2)
-  if (Serial2.available()) {
-    String barcodeData = Serial2.readStringUntil('\r'); // Biasanya scanner mengirim CR atau LF di akhir
-    barcodeData.trim();
+  while (Serial2.available() > 0) {
+    char c = Serial2.read();
+    lastBarcodeCharTime = millis();
     
-    if (barcodeData.length() > 0) {
-      Serial.println("[BARCODE] Terdeteksi! Data: " + barcodeData);
-      
-      if (WiFi.status() == WL_CONNECTED && mqttClient.connected()) {
-        // Kirim Payload ke EMQX (Gunakan format JSON yang sama agar Backend mudah mengolahnya)
-        String payload = "{\"barcode\":\"" + barcodeData + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
-        String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
-        
-        if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
-          Serial.println("[MQTT] Barcode SUKSES Terkirim.");
-        } else {
-          Serial.println("[MQTT] Barcode GAGAL Mengirim!");
-        }
-      } else {
-        Serial.println("[MQTT] Offline, Barcode tidak terkirim.");
+    // Tampilkan setiap byte/karakter mentah yang masuk ke Serial Monitor untuk analisis
+    if (c >= 32 && c <= 126) {
+      Serial.print(c);
+    } else {
+      Serial.printf("[0x%02X]", c); // Menampilkan kode ASCII heksadesimal untuk karakter non-printable (seperti \r atau \n)
+    }
+
+    // Jika mendeteksi karakter terminator (Enter/New Line)
+    if (c == '\r' || c == '\n') {
+      barcodeBuffer.trim();
+      if (barcodeBuffer.length() > 0) {
+        Serial.println("\n[BARCODE] Terdeteksi! Data: " + barcodeBuffer);
+        barcodeBuffer = ""; // Kosongkan buffer setelah selesai diproses
       }
+    } else {
+      barcodeBuffer += c; // Masukkan karakter ke buffer
     }
   }
 
+  // Pengaman jika scanner tidak mengirimkan karakter \r atau \n (tanpa suffix/akhiran)
+  // Jika ada data di buffer dan sudah tidak ada karakter baru masuk selama 50ms, langsung proses.
+  if (barcodeBuffer.length() > 0 && (millis() - lastBarcodeCharTime > barcodeTimeoutMs)) {
+    barcodeBuffer.trim();
+    if (barcodeBuffer.length() > 0) {
+      Serial.println("\n[BARCODE] Terdeteksi (Timeout/No-Suffix)! Data: " + barcodeBuffer);
+    }
+    barcodeBuffer = ""; // Reset buffer
+  }
+
+#if 0 // Ganti jadi 1 untuk mengaktifkan pembacaan RFID kembali
   // Logika Pembacaan RFID
   static unsigned long lastRFIDReadTime = 0;
 
@@ -584,6 +593,7 @@ void loop() {
       lastRFIDReadTime = millis();
     }
   }
+#endif
 
   // Tangani timer penutupan gerbang otomatis
   handleGate();
