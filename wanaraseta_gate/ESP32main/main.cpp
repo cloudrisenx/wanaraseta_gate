@@ -29,7 +29,7 @@
 
 #define RELAY1_PIN          2                   // Relay 1 (Gate In) / Built-in LED
 #define RELAY2_PIN          27                  // Relay 2 (Gate Out / Alarm)
-#define GATE_OPEN_MS        3000                // Durasi gerbang terbuka (3 detik)
+#define GATE_OPEN_MS        200                 // Durasi gerbang terbuka (200 ms)
 
 // Konfigurasi Level Logika Relay (Active-LOW)
 #define RELAY_ACTIVE        LOW
@@ -101,6 +101,25 @@ void restoreAfterOTA();
 void cekUpdateGitHub(bool fromWeb = false);
 void triggerRelay(int relayNum);
 void handleGate();
+void reinitRFID();
+
+// ========================================================================
+// KONTROL RESET & RE-INISIALISASI RFID
+// ========================================================================
+void reinitRFID() {
+  Serial.println("[RFID] Re-inisialisasi sensor RFID...");
+  
+  // Hardware Reset Pulsa via RST Pin
+  pinMode(RST_PIN, OUTPUT);
+  digitalWrite(RST_PIN, LOW);
+  delay(10);
+  digitalWrite(RST_PIN, HIGH);
+  delay(50);
+
+  mfrc522.PCD_Init();
+  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
+  delay(10);
+}
 
 // ========================================================================
 // 3. KONTROL POWER-SAVING & ANTI-BROWNOUT
@@ -1261,18 +1280,32 @@ void triggerRelay(int relayNum) {
     digitalWrite(RELAY2_PIN, RELAY_ACTIVE);
     Serial.println("[GATE] Relay 2 Aktif (Alarm/Aux Terbuka)");
   }
+  
+  // Re-inisialisasi RFID untuk mengatasi noise EMI awal dari relay
+  delay(50);
+  reinitRFID();
 }
 
 void handleGate() {
+  bool relayJustClosed = false;
+
   if (isRelay1Active && (millis() - relay1ActiveTime > GATE_OPEN_MS)) {
     isRelay1Active = false;
     digitalWrite(RELAY1_PIN, RELAY_DEACTIVE);
     Serial.println("[GATE] Relay 1 Mati (Gerbang Tertutup)");
+    relayJustClosed = true;
   }
   if (isRelay2Active && (millis() - relay2ActiveTime > GATE_OPEN_MS)) {
     isRelay2Active = false;
     digitalWrite(RELAY2_PIN, RELAY_DEACTIVE);
     Serial.println("[GATE] Relay 2 Mati (Alarm/Aux Tertutup)");
+    relayJustClosed = true;
+  }
+
+  if (relayJustClosed) {
+    // Re-inisialisasi RFID setelah relay tertutup (back-EMF terbesar)
+    delay(50);
+    reinitRFID();
   }
 }
 
@@ -1395,6 +1428,7 @@ void setup() {
   // Inisialisasi SPI & RFID MFRC522 (VSPI default)
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SS_PIN); 
   mfrc522.PCD_Init();
+  mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
 
   // Cek versi sensor saat awal boot
   byte v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
@@ -1485,6 +1519,7 @@ void loop() {
   // Logika Pembacaan & Health-Check Sensor RFID
   static unsigned long lastRFIDReadTime = 0;
   static unsigned long lastRfidHealthCheck = 0;
+  static unsigned long lastPeriodicRfidReinit = 0;
 
   // Health-check berkala setiap 5 detik
   if (millis() - lastRfidHealthCheck > 5000) {
@@ -1505,6 +1540,7 @@ void loop() {
       SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SS_PIN);
       
       mfrc522.PCD_Init();
+      mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
       delay(50);
       
       v = mfrc522.PCD_ReadRegister(mfrc522.VersionReg);
@@ -1522,60 +1558,74 @@ void loop() {
     }
   }
 
+  // Soft-reset register berkala setiap 30 detik untuk memulihkan register yang ter-corrupt noise
+  if (millis() - lastPeriodicRfidReinit > 30000) {
+    lastPeriodicRfidReinit = millis();
+    mfrc522.PCD_Init();
+    mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
+  }
+
   // Proses scan kartu RFID
-  if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
-    String rfidUid = "";
-    for (byte i = 0; i < mfrc522.uid.size; i++) {
-      rfidUid += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
-      rfidUid += String(mfrc522.uid.uidByte[i], HEX);
-    }
-    rfidUid.toUpperCase();
-
-    unsigned long now = millis();
-    
-    // Cooldown logic cerdas
-    bool isSameCard = (rfidUid == lastScannedUid);
-    bool withinSameCardCooldown = (now - lastScannedTime < COOLDOWN_SAME_CARD_MS);
-    bool withinAnyCardCooldown = (now - lastScannedTime < COOLDOWN_ANY_CARD_MS);
-
-    if (isSameCard && withinSameCardCooldown) {
-      // Abaikan agar tidak terjadi double-scan kartu yang sama
-      mfrc522.PICC_HaltA();
-      mfrc522.PCD_StopCrypto1();
-    } else if (withinAnyCardCooldown) {
-      // Abaikan karena terlalu cepat dari scan sebelumnya
-      mfrc522.PICC_HaltA();
-      mfrc522.PCD_StopCrypto1();
-    } else {
-      // Proses Validasi Kartu
-      lastScannedUid  = rfidUid;
-      lastScannedTime = now;
-      lastRfidScan    = rfidUid;
-      Serial.println("[RFID] Kartu Terdeteksi: " + rfidUid);
-
-      // Bypass jika master card
-      if (rfidUid == rfid_master) {
-        Serial.println("[MASTER] Master Card terdeteksi! Bypass buka gerbang.");
-        triggerRelay(1);
-      } else {
-        triggerRelay(1); // Buka gerbang utama (LED)
-        
-        // Kirim data scan ke MQTT Broker
-        if (wifiConnected && mqttClient.connected()) {
-          String payload = "{\"rfid\":\"" + rfidUid + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
-          String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
-          if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
-            Serial.println("[MQTT] Data scan terkirim ke EMQX.");
-          } else {
-            Serial.println("[MQTT] Gagal mengirim data scan!");
-          }
-        } else {
-          Serial.println("[MQTT] Offline, data scan tidak dikirim.");
-        }
+  if (mfrc522.PICC_IsNewCardPresent()) {
+    if (mfrc522.PICC_ReadCardSerial()) {
+      String rfidUid = "";
+      for (byte i = 0; i < mfrc522.uid.size; i++) {
+        rfidUid += String(mfrc522.uid.uidByte[i] < 0x10 ? "0" : "");
+        rfidUid += String(mfrc522.uid.uidByte[i], HEX);
       }
+      rfidUid.toUpperCase();
 
+      unsigned long now = millis();
+      
+      // Cooldown logic cerdas
+      bool isSameCard = (rfidUid == lastScannedUid);
+      bool withinSameCardCooldown = (now - lastScannedTime < COOLDOWN_SAME_CARD_MS);
+      bool withinAnyCardCooldown = (now - lastScannedTime < COOLDOWN_ANY_CARD_MS);
+
+      if (isSameCard && withinSameCardCooldown) {
+        // Abaikan agar tidak terjadi double-scan kartu yang sama
+        mfrc522.PICC_HaltA();
+        mfrc522.PCD_StopCrypto1();
+      } else if (withinAnyCardCooldown) {
+        // Abaikan karena terlalu cepat dari scan sebelumnya
+        mfrc522.PICC_HaltA();
+        mfrc522.PCD_StopCrypto1();
+      } else {
+        // Proses Validasi Kartu
+        lastScannedUid  = rfidUid;
+        lastScannedTime = now;
+        lastRfidScan    = rfidUid;
+        Serial.println("[RFID] Kartu Terdeteksi: " + rfidUid);
+
+        // Bypass jika master card
+        if (rfidUid == rfid_master) {
+          Serial.println("[MASTER] Master Card terdeteksi! Bypass buka gerbang.");
+          triggerRelay(1);
+        } else {
+          // Kirim data scan ke MQTT Broker
+          if (wifiConnected && mqttClient.connected()) {
+            String payload = "{\"rfid\":\"" + rfidUid + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
+            String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
+            if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
+              Serial.println("[MQTT] Data scan terkirim ke EMQX.");
+            } else {
+              Serial.println("[MQTT] Gagal mengirim data scan!");
+            }
+          } else {
+            Serial.println("[MQTT] Offline, data scan tidak dikirim.");
+          }
+        }
+
+        mfrc522.PICC_HaltA();
+        mfrc522.PCD_StopCrypto1();
+      }
+    } else {
+      // Gagal membaca serial kartu (misalnya karena terganggu noise relay).
+      // Bersihkan state kartu dan soft reset reader agar tidak stuck.
       mfrc522.PICC_HaltA();
       mfrc522.PCD_StopCrypto1();
+      mfrc522.PCD_Init();
+      mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
     }
   }
 
