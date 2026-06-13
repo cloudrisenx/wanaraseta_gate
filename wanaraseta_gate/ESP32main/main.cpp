@@ -20,7 +20,7 @@
 // 1. ZONA KONFIGURASI UTAMA
 // ========================================================================
 
-#define APP_VERSION         "3.2"               // Versi Firmware ESP32 WiFi
+#define APP_VERSION         "3.5"               // Versi Firmware ESP32 WiFi
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository
 
