@@ -35,6 +35,9 @@
 #define RELAY_ACTIVE        LOW
 #define RELAY_DEACTIVE      HIGH
 
+#define RFID_LED_PIN        26                  // LED Indikator saat RFID terbaca
+#define RFID_LED_ON_MS      200                 // Durasi LED menyala saat scan (200 ms)
+
 // Konfigurasi Watchdog Timer
 #define WDT_TIMEOUT_SECONDS 5                   // Timeout WDT 5 detik
 
@@ -51,15 +54,14 @@
 #define SPI_MOSI            23                  // VSPI MOSI
 
 // Cooldown Pembacaan RFID (Milidetik)
-#define COOLDOWN_SAME_CARD_MS 3000              // Cooldown untuk kartu yang sama
-#define COOLDOWN_ANY_CARD_MS  500               // Cooldown minimal antar scan kartu apa saja
+#define COOLDOWN_SAME_CARD_MS 1000              // Cooldown untuk kartu yang sama (dipercepat)
+#define COOLDOWN_ANY_CARD_MS  0                 // Tanpa jeda untuk kartu yang berbeda
 
 // ========================================================================
 // 2. VARIABEL GLOBAL & INSTANSIASI
 // ========================================================================
 
 WebServer server(80);
-WiFiManager wm;
 Preferences preferences;
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
@@ -73,8 +75,10 @@ String mqtt_user       = "gate_esp32_01";
 String mqtt_pass       = "11223344";
 String mqtt_client_id  = "gate_esp32_01";
 
-String folderAktif     = "ESP32main";
+WiFiManager wm;
 String savedApSSID     = DEFAULT_AP_SSID;
+
+String folderAktif     = "ESP32main";
 
 // Penundaan restart untuk respon HTTP bersih
 bool pendingRestart = false;
@@ -92,6 +96,12 @@ unsigned long relay1ActiveTime = 0;
 bool isRelay1Active = false;
 unsigned long relay2ActiveTime = 0;
 bool isRelay2Active = false;
+bool pendingRfidReinit = false;
+unsigned long pendingRfidReinitTime = 0;
+
+// Status & Timer LED RFID
+unsigned long rfidLedActiveTime = 0;
+bool isRfidLedActive = false;
 
 unsigned long lastMqttReconnectAttempt = 0;
 
@@ -663,6 +673,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <span class="status-label">MQTT Client ID</span>
             <span class="status-value mono" id="mqtt-client-id">Loading...</span>
           </div>
+          <div class="control-row" style="margin-top: 16px;">
+            <button class="btn btn-secondary" onclick="reconnectWifi()" style="font-size: 12px; padding: 6px;">🔄 Reconnect WiFi</button>
+            <button class="btn btn-secondary btn-danger" onclick="forgetWifi()" style="font-size: 12px; padding: 6px;">🗑️ Lupakan WiFi</button>
+          </div>
         </div>
       </div>
     </div>
@@ -676,12 +690,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 0;">
         <div class="status-list" style="justify-content: center;">
           <div class="status-item">
-            <span class="status-label">Status Gerbang Utama (Relay 1 - GPIO 2)</span>
-            <span class="status-value text-muted" id="r1-status">MATI</span>
+            <span class="status-label">Trigger Gerbang Utama (Relay 1 - GPIO 2)</span>
+            <span class="status-value text-muted" id="r1-status">⚡ STANDBY</span>
           </div>
           <div class="status-item">
-            <span class="status-label">Status Alarm/Aux (Relay 2 - GPIO 27)</span>
-            <span class="status-value text-muted" id="r2-status">MATI</span>
+            <span class="status-label">Trigger Alarm/Aux (Relay 2 - GPIO 27)</span>
+            <span class="status-value text-muted" id="r2-status">⚡ STANDBY</span>
           </div>
         </div>
         <div class="control-row" style="margin-top: 0; display: flex; gap: 10px; justify-content: flex-start; align-items: center; align-content: center; flex-wrap: wrap; width: 100%;">
@@ -868,11 +882,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
       // Relays UI
       let r1 = document.getElementById('r1-status');
-      r1.innerText = data.relay1 ? '✅ AKTIF (Terbuka)' : '🔒 MATI (Tertutup)';
+      r1.innerText = data.relay1 ? '✅ AKTIF (Pulse)' : '⚡ STANDBY';
       r1.className = data.relay1 ? 'status-value text-green' : 'status-value text-muted';
 
       let r2 = document.getElementById('r2-status');
-      r2.innerText = data.relay2 ? '🔔 AKTIF (Buka)' : '🔒 MATI (Tutup)';
+      r2.innerText = data.relay2 ? '🔔 AKTIF (Pulse)' : '⚡ STANDBY';
       r2.className = data.relay2 ? 'status-value text-orange' : 'status-value text-muted';
     }
 
@@ -920,14 +934,40 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }, 1000);
     }
 
+    function reconnectWifi() {
+      fetch('/reconnect_wifi')
+        .then(() => showToast('Mencoba menghubungkan ulang WiFi...'))
+        .catch(() => showToast('Gagal mengirim perintah', false));
+    }
+
+    function forgetWifi() {
+      if (confirm('Yakin ingin menghapus WiFi? Alat akan restart ke mode setup Hotspot.')) {
+        fetch('/forget_wifi')
+          .then(() => showOverlay('Menghapus WiFi', 'Alat akan restart dan masuk ke mode Setup (Wanara_Gate_Setup)', 15))
+          .catch(() => showToast('Gagal mereset WiFi', false));
+      }
+    }
+
     function triggerRelay(num) {
+      let r = document.getElementById('r' + num + '-status');
+      if (r) {
+        r.innerText = '⏳ MENGIRIM...';
+        r.className = 'status-value text-orange';
+      }
       fetch('/trigger_relay?relay=' + num + '&t=' + Date.now())
         .then(res => {
           if (res.ok) {
             showToast('Relay ' + num + ' Berhasil Dipicu!');
-            fetchStatus();
+            if (r) {
+              r.innerText = num === 1 ? '✅ DIPICU' : '🔔 DIPICU';
+              r.className = num === 1 ? 'status-value text-green' : 'status-value text-orange';
+            }
           } else {
             showToast('Gagal memicu relay', false);
+            if (r) {
+              r.innerText = '❌ GAGAL';
+              r.className = 'status-value text-red';
+            }
           }
         })
         .catch(() => showToast('Error komunikasi', false));
@@ -1081,7 +1121,7 @@ void handleStatusData() {
 
   bool wifiCon = (WiFi.status() == WL_CONNECTED);
   doc["wifi_status"]   = wifiCon ? "Connected" : "Disconnected";
-  doc["wifi_ssid"]     = WiFi.SSID();
+  doc["wifi_ssid"]     = wifiCon ? WiFi.SSID() : (wm.getWiFiIsSaved() ? WiFi.SSID() : "-");
   doc["wifi_rssi"]     = wifiCon ? String(WiFi.RSSI()) : "0";
   doc["wifi_ip"]       = WiFi.localIP().toString();
 
@@ -1095,6 +1135,24 @@ void handleStatusData() {
   String output;
   serializeJson(doc, output);
   server.send(200, "application/json", output);
+}
+
+void handleReconnectWifi() {
+  server.send(200, "text/plain", "Reconnecting");
+  if (wm.getWiFiIsSaved()) {
+    Serial.println("[WIFI] Perintah reconnect manual via Web...");
+    WiFi.disconnect();
+    WiFi.begin(); // Reconnect pakai kredensial tersimpan
+  }
+}
+
+void handleForgetWifi() {
+  server.send(200, "text/plain", "OK");
+  Serial.println("[WIFI] Perintah Forget WiFi diterima. Menghapus kredensial...");
+  delay(1000);
+  wm.resetSettings(); // Menghapus SSID & Password dari NVS ESP32
+  esp_task_wdt_delete(NULL); 
+  ESP.restart();
 }
 
 void handleSaveFolder() {
@@ -1281,9 +1339,9 @@ void triggerRelay(int relayNum) {
     Serial.println("[GATE] Relay 2 Aktif (Alarm/Aux Terbuka)");
   }
   
-  // Re-inisialisasi RFID untuk mengatasi noise EMI awal dari relay
-  delay(50);
-  reinitRFID();
+  // Jadwalkan soft-reinit RFID Non-Blocking untuk mengatasi noise EMI
+  pendingRfidReinit = true;
+  pendingRfidReinitTime = millis();
 }
 
 void handleGate() {
@@ -1303,9 +1361,9 @@ void handleGate() {
   }
 
   if (relayJustClosed) {
-    // Re-inisialisasi RFID setelah relay tertutup (back-EMF terbesar)
-    delay(50);
-    reinitRFID();
+    // Jadwalkan soft-reinit RFID Non-Blocking untuk mengatasi noise EMI
+    pendingRfidReinit = true;
+    pendingRfidReinitTime = millis();
   }
 }
 
@@ -1360,7 +1418,18 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 void reconnectMQTT() {
   Serial.printf("[MQTT] Melakukan koneksi ke broker EMQX %s:%d...\n", mqtt_server.c_str(), mqtt_port);
   
+  // TCP Ping Cepat (Timeout maksimal 1 detik)
+  // Mencegah fungsi koneksi mem-blokir program selama 15 detik jika IP/Server sedang mati
+  if (!espClient.connect(mqtt_server.c_str(), mqtt_port, 1000)) {
+    Serial.println("[MQTT] ERROR: Broker tidak merespon / IP tidak dapat dijangkau.");
+    return; // Langsung keluar agar sistem & WDT tetap berjalan normal
+  }
+  espClient.stop(); // Port terbuka! Tutup ping socket agar mqttClient aslinya bisa terkoneksi
+
   espClient.setTimeout(1200); 
+
+  // Beri makan WDT sebelum proses koneksi yang memakan waktu (blocking)
+  esp_task_wdt_reset();
 
   bool connected = false;
   if (mqtt_user.length() > 0) {
@@ -1368,6 +1437,9 @@ void reconnectMQTT() {
   } else {
     connected = mqttClient.connect(mqtt_client_id.c_str());
   }
+
+  // Beri makan WDT setelah selesai proses koneksi
+  esp_task_wdt_reset();
 
   if (connected) {
     Serial.println("[MQTT] Terhubung!");
@@ -1404,14 +1476,25 @@ void setup() {
   rfid_master    = preferences.getString("rfid_master", rfid_master);
   preferences.end();
 
-  // Inisialisasi WiFi Manager
+  // Konfigurasi WiFiManager
+  wm.setConnectTimeout(15); // Coba koneksi ke router 15 detik
+  if (wm.getWiFiIsSaved()) {
+    // Jika sudah ada WiFi tersimpan, coba konek tanpa buka Hotspot otomatis jika router mati
+    wm.setEnableConfigPortal(false); 
+  }
+  
   Serial.println("\n[WIFI] Mencoba terhubung ke jaringan...");
-  wm.autoConnect(savedApSSID.c_str(), DEFAULT_AP_PASSWORD);
-  Serial.println("[WIFI] Sukses Terhubung! IP Web Dashboard: " + WiFi.localIP().toString());
+  if (!wm.autoConnect(savedApSSID.c_str(), DEFAULT_AP_PASSWORD)) {
+    Serial.println("[WIFI] Gagal terhubung atau masuk mode setup Hotspot.");
+  } else {
+    Serial.println("[WIFI] Sukses Terhubung! IP Web Dashboard: " + WiFi.localIP().toString());
+  }
 
   // Routing Halaman Web
   server.on("/", handleRoot);
   server.on("/status_data", HTTP_GET, handleStatusData);
+  server.on("/reconnect_wifi", HTTP_GET, handleReconnectWifi);
+  server.on("/forget_wifi", HTTP_GET, handleForgetWifi);
   server.on("/save_folder", HTTP_POST, handleSaveFolder);
   server.on("/save_mqtt", HTTP_POST, handleSaveMqtt);
   server.on("/save_master", HTTP_POST, handleSaveMaster);
@@ -1470,23 +1553,64 @@ void setup() {
   digitalWrite(RELAY1_PIN, RELAY_DEACTIVE);
   digitalWrite(RELAY2_PIN, RELAY_DEACTIVE);
 
+  // Setup Pin LED RFID sebagai Output
+  pinMode(RFID_LED_PIN, OUTPUT);
+  digitalWrite(RFID_LED_PIN, LOW); // Default mati (asumsi Active-HIGH)
+
   // Cek pembaruan firmware 1x saat booting
   cekUpdateGitHub();
 }
 
 void loop() {
   server.handleClient(); // Jaga agar server web tetap responsif
-  esp_task_wdt_reset();  // Reset WDT
 
   // Tangani restart tertunda agar respon HTTP terkirim bersih ke browser
   if (pendingRestart && (millis() - restartTime > 2000)) {
     ESP.restart();
   }
 
-  // Jaga koneksi MQTT tetap terhubung
+  // Status Koneksi
   bool wifiConnected = (WiFi.status() == WL_CONNECTED);
+  bool mqttConnected = mqttClient.connected();
+
+  static unsigned long wifiDisconnectTime = millis();
+
   if (wifiConnected) {
-    if (!mqttClient.connected()) {
+    wifiDisconnectTime = millis();
+  }
+
+  // --- LOGIKA WATCHDOG TIMER (WDT) ---
+  bool feedWDT = true;
+
+  if (wm.getWiFiIsSaved()) {
+    // Jika WiFi terputus > 60 detik (1 Menit)
+    if (!wifiConnected && (millis() - wifiDisconnectTime > 60000)) {
+      feedWDT = false;
+    }
+  }
+
+  if (feedWDT) {
+    esp_task_wdt_reset(); // Beri makan watchdog
+  }
+
+  // --- LOGIKA RECONNECT WIFI ---
+  static unsigned long lastWifiCheck = 0;
+  if (!wifiConnected) {
+    // Coba reconnect setiap 10 detik
+    if (millis() - lastWifiCheck > 10000) {
+      lastWifiCheck = millis();
+      if (wm.getWiFiIsSaved()) {
+        Serial.println("[WIFI] Terputus! Mencoba menghubungkan ulang ke router...");
+        WiFi.disconnect();
+        WiFi.begin(); 
+      }
+    }
+  }
+
+  // --- LOGIKA RECONNECT MQTT ---
+  if (wifiConnected) {
+    if (!mqttConnected) {
+      // Coba reconnect tiap 5 detik tanpa peduli WDT
       if (millis() - lastMqttReconnectAttempt > 5000) {
         lastMqttReconnectAttempt = millis();
         reconnectMQTT();
@@ -1514,6 +1638,13 @@ void loop() {
         }
       }
     }
+  }
+
+  // Tangani Re-inisialisasi RFID Non-Blocking akibat EMI Relay
+  if (pendingRfidReinit && (millis() - pendingRfidReinitTime > 50)) {
+    pendingRfidReinit = false;
+    mfrc522.PCD_Init();
+    mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
   }
 
   // Logika Pembacaan & Health-Check Sensor RFID
@@ -1597,6 +1728,11 @@ void loop() {
         lastRfidScan    = rfidUid;
         Serial.println("[RFID] Kartu Terdeteksi: " + rfidUid);
 
+        // Nyalakan LED Indikator
+        isRfidLedActive = true;
+        rfidLedActiveTime = millis();
+        digitalWrite(RFID_LED_PIN, HIGH);
+
         // Bypass jika master card
         if (rfidUid == rfid_master) {
           Serial.println("[MASTER] Master Card terdeteksi! Bypass buka gerbang.");
@@ -1627,6 +1763,12 @@ void loop() {
       mfrc522.PCD_Init();
       mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
     }
+  }
+
+  // Tangani timer matikan LED Indikator RFID otomatis
+  if (isRfidLedActive && (millis() - rfidLedActiveTime > RFID_LED_ON_MS)) {
+    isRfidLedActive = false;
+    digitalWrite(RFID_LED_PIN, LOW);
   }
 
   // Tangani timer penutupan gerbang otomatis

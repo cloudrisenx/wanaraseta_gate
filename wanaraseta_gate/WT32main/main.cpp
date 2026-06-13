@@ -20,7 +20,7 @@
 // 1. ZONA KONFIGURASI UTAMA
 // ========================================================================
 
-#define APP_VERSION "3.2"             // Versi Firmware
+#define APP_VERSION "3.5"             // Versi Firmware
 #define GITHUB_USER "cloudrisenx"     // Username GitHub
 #define GITHUB_REPO "wanaraseta_gate" // Nama Repository
 
@@ -56,8 +56,8 @@
 #define SPI_MOSI 15
 
 // Cooldown Pembacaan RFID (Milidetik)
-#define COOLDOWN_SAME_CARD_MS 3000 // Cooldown untuk kartu yang sama
-#define COOLDOWN_ANY_CARD_MS 500   // Cooldown minimal antar scan kartu apa saja
+#define COOLDOWN_SAME_CARD_MS 1000 // Cooldown untuk kartu yang sama (dipercepat)
+#define COOLDOWN_ANY_CARD_MS 0     // Tanpa jeda untuk kartu yang berbeda
 
 // ========================================================================
 // 2. VARIABEL GLOBAL & INSTANSIASI
@@ -96,6 +96,8 @@ unsigned long relay1ActiveTime = 0;
 bool isRelay1Active = false;
 unsigned long relay2ActiveTime = 0;
 bool isRelay2Active = false;
+bool pendingRfidReinit = false;
+unsigned long pendingRfidReinitTime = 0;
 
 unsigned long lastMqttReconnectAttempt = 0;
 
@@ -695,12 +697,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 0;">
         <div class="status-list" style="justify-content: center;">
           <div class="status-item">
-            <span class="status-label">Status Gerbang Utama (Relay 1 - GPIO 2)</span>
-            <span class="status-value text-muted" id="r1-status">MATI</span>
+            <span class="status-label">Trigger Gerbang Utama (Relay 1 - GPIO 2)</span>
+            <span class="status-value text-muted" id="r1-status">⚡ STANDBY</span>
           </div>
           <div class="status-item">
-            <span class="status-label">Status Alarm/Aux (Relay 2 - GPIO 5)</span>
-            <span class="status-value text-muted" id="r2-status">MATI</span>
+            <span class="status-label">Trigger Alarm/Aux (Relay 2 - GPIO 5)</span>
+            <span class="status-value text-muted" id="r2-status">⚡ STANDBY</span>
           </div>
         </div>
         <div class="control-row" style="margin-top: 0; display: flex; gap: 10px; justify-content: flex-start; align-items: center; align-content: center; flex-wrap: wrap; width: 100%;">
@@ -885,11 +887,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
       // Relays UI
       let r1 = document.getElementById('r1-status');
-      r1.innerText = data.relay1 ? '✅ AKTIF (Terbuka)' : '🔒 MATI (Tertutup)';
+      r1.innerText = data.relay1 ? '✅ AKTIF (Pulse)' : '⚡ STANDBY';
       r1.className = data.relay1 ? 'status-value text-green' : 'status-value text-muted';
 
       let r2 = document.getElementById('r2-status');
-      r2.innerText = data.relay2 ? '🔔 AKTIF (Buka)' : '🔒 MATI (Tutup)';
+      r2.innerText = data.relay2 ? '🔔 AKTIF (Pulse)' : '⚡ STANDBY';
       r2.className = data.relay2 ? 'status-value text-orange' : 'status-value text-muted';
     }
 
@@ -938,13 +940,25 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     }
 
     function triggerRelay(num) {
+      let r = document.getElementById('r' + num + '-status');
+      if (r) {
+        r.innerText = '⏳ MENGIRIM...';
+        r.className = 'status-value text-orange';
+      }
       fetch('/trigger_relay?relay=' + num + '&t=' + Date.now())
         .then(res => {
           if (res.ok) {
             showToast('Relay ' + num + ' Berhasil Dipicu!');
-            fetchStatus();
+            if (r) {
+              r.innerText = num === 1 ? '✅ DIPICU' : '🔔 DIPICU';
+              r.className = num === 1 ? 'status-value text-green' : 'status-value text-orange';
+            }
           } else {
             showToast('Gagal memicu relay', false);
+            if (r) {
+              r.innerText = '❌ GAGAL';
+              r.className = 'status-value text-red';
+            }
           }
         })
         .catch(() => showToast('Error komunikasi', false));
@@ -1315,9 +1329,9 @@ void triggerRelay(int relayNum) {
     Serial.println("[GATE] Relay 2 Aktif (Alarm/Aux Terbuka)");
   }
   
-  // Re-inisialisasi RFID untuk mengatasi noise EMI awal dari relay
-  delay(50);
-  reinitRFID();
+  // Jadwalkan soft-reinit RFID Non-Blocking untuk mengatasi noise EMI
+  pendingRfidReinit = true;
+  pendingRfidReinitTime = millis();
 }
 
 void handleGate() {
@@ -1337,9 +1351,9 @@ void handleGate() {
   }
 
   if (relayJustClosed) {
-    // Re-inisialisasi RFID setelah relay tertutup (back-EMF terbesar)
-    delay(50);
-    reinitRFID();
+    // Jadwalkan soft-reinit RFID Non-Blocking untuk mengatasi noise EMI
+    pendingRfidReinit = true;
+    pendingRfidReinitTime = millis();
   }
 }
 
@@ -1394,9 +1408,20 @@ void reconnectMQTT() {
   Serial.printf("[MQTT] Melakukan koneksi ke broker EMQX %s:%d...\n",
                 mqtt_server.c_str(), mqtt_port);
 
+  // TCP Ping Cepat (Timeout maksimal 1 detik)
+  // Mencegah fungsi koneksi mem-blokir program selama 15 detik jika IP/Server sedang mati
+  if (!espClient.connect(mqtt_server.c_str(), mqtt_port, 1000)) {
+    Serial.println("[MQTT] ERROR: Broker tidak merespon / IP tidak dapat dijangkau.");
+    return; // Langsung keluar agar sistem & WDT tetap berjalan normal
+  }
+  espClient.stop(); // Port terbuka! Tutup ping socket agar mqttClient aslinya bisa terkoneksi
+
   // Set timeout kecil (1.2 detik) pada client agar reconnect tidak memblokir
   // WDT
   espClient.setTimeout(1200);
+
+  // Beri makan WDT sebelum proses koneksi yang memakan waktu (blocking)
+  esp_task_wdt_reset();
 
   bool connected = false;
   if (mqtt_user.length() > 0) {
@@ -1405,6 +1430,9 @@ void reconnectMQTT() {
   } else {
     connected = mqttClient.connect(mqtt_client_id.c_str());
   }
+
+  // Beri makan WDT setelah selesai proses koneksi
+  esp_task_wdt_reset();
 
   if (connected) {
     Serial.println("[MQTT] Terhubung!");
@@ -1509,16 +1537,22 @@ void setup() {
 
 void loop() {
   server.handleClient(); // Proses Web Server
-  esp_task_wdt_reset();  // Reset WDT (Beri makan watchdog)
 
   // Tangani restart tertunda agar respon HTTP terkirim bersih ke browser
   if (pendingRestart && (millis() - restartTime > 2000)) {
     ESP.restart();
   }
 
+  bool mqttConnected = mqttClient.connected();
+
+  // --- LOGIKA WATCHDOG TIMER (WDT) ---
+  // WDT selalu di-feed kecuali terjadi hang/freeze pada sistem
+  esp_task_wdt_reset(); // Reset WDT (Beri makan watchdog)
+
   // Jaga koneksi MQTT tetap terhubung
   if (eth_connected) {
-    if (!mqttClient.connected()) {
+    if (!mqttConnected) {
+      // Coba reconnect tiap 5 detik
       if (millis() - lastMqttReconnectAttempt > 5000) {
         lastMqttReconnectAttempt = millis();
         reconnectMQTT();
@@ -1548,6 +1582,13 @@ void loop() {
         }
       }
     }
+  }
+
+  // Tangani Re-inisialisasi RFID Non-Blocking akibat EMI Relay
+  if (pendingRfidReinit && (millis() - pendingRfidReinitTime > 50)) {
+    pendingRfidReinit = false;
+    mfrc522.PCD_Init();
+    mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
   }
 
   // Logika Pembacaan & Health-Check Sensor RFID
