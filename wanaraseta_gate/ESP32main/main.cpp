@@ -185,7 +185,7 @@ void restoreAfterOTA() {
   
   // 3. Inisialisasi ulang SPI & RFID
   SPI.end();
-  SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SS_PIN);
+  SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
   mfrc522.PCD_Init();
   delay(10);
   mfrc522.PCD_AntennaOn();
@@ -1420,13 +1420,15 @@ void reconnectMQTT() {
   
   // TCP Ping Cepat (Timeout maksimal 1 detik)
   // Mencegah fungsi koneksi mem-blokir program selama 15 detik jika IP/Server sedang mati
-  if (!espClient.connect(mqtt_server.c_str(), mqtt_port, 1000)) {
+  WiFiClient pingClient;
+  if (!pingClient.connect(mqtt_server.c_str(), mqtt_port, 1000)) {
     Serial.println("[MQTT] ERROR: Broker tidak merespon / IP tidak dapat dijangkau.");
     return; // Langsung keluar agar sistem & WDT tetap berjalan normal
   }
-  espClient.stop(); // Port terbuka! Tutup ping socket agar mqttClient aslinya bisa terkoneksi
+  pingClient.stop(); // Port terbuka! Tutup ping socket
 
-  espClient.setTimeout(1200); 
+  // Set timeout (3 detik) pada client agar reconnect tidak memblokir WDT
+  espClient.setTimeout(3000);
 
   // Beri makan WDT sebelum proses koneksi yang memakan waktu (blocking)
   esp_task_wdt_reset();
@@ -1476,6 +1478,16 @@ void setup() {
   rfid_master    = preferences.getString("rfid_master", rfid_master);
   preferences.end();
 
+  // Pastikan Client ID unik dengan menambahkan suffix MAC address jika masih default atau kosong
+  if (mqtt_client_id == "gate_esp32_01" || mqtt_client_id.length() == 0) {
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    char macSuffix[16];
+    sprintf(macSuffix, "_%02X%02X%02X", mac[3], mac[4], mac[5]);
+    mqtt_client_id = "gate_esp32_01" + String(macSuffix);
+    Serial.println("[MQTT] Client ID default terdeteksi. Menggunakan ID unik: " + mqtt_client_id);
+  }
+
   // Konfigurasi WiFiManager
   wm.setConnectTimeout(15); // Coba koneksi ke router 15 detik
   if (wm.getWiFiIsSaved()) {
@@ -1508,8 +1520,15 @@ void setup() {
 
   server.begin();
 
-  // Inisialisasi SPI & RFID MFRC522 (VSPI default)
-  SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SS_PIN); 
+  // Hardware Reset Pulsa via RST Pin sebelum inisialisasi SPI / PCD
+  pinMode(RST_PIN, OUTPUT);
+  digitalWrite(RST_PIN, LOW);
+  delay(20);
+  digitalWrite(RST_PIN, HIGH);
+  delay(50);
+
+  // Inisialisasi SPI & RFID MFRC522 (VSPI default, gunakan begin tanpa SS_PIN agar CS dikendalikan manual oleh library)
+  SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI); 
   mfrc522.PCD_Init();
   mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
 
@@ -1668,7 +1687,7 @@ void loop() {
       
       // Reset SPI bus
       SPI.end();
-      SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, SS_PIN);
+      SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
       
       mfrc522.PCD_Init();
       mfrc522.PCD_SetAntennaGain(mfrc522.RxGain_max);
