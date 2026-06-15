@@ -122,6 +122,10 @@ bool isRelay2Active = false;
 bool pendingRfidReinit = false;
 unsigned long pendingRfidReinitTime = 0;
 
+// Dual trigger logic untuk Kids
+bool pendingKidsTrigger = false;
+unsigned long kidsTriggerTime = 0;
+
 unsigned long lastMqttReconnectAttempt = 0;
 
 // Forward Declarations untuk menghindari error undeclared scope
@@ -1711,6 +1715,13 @@ void handleGate() {
     relayJustClosed = true;
   }
 
+  // Dual trigger untuk Kids (jeda 10 detik lalu buka lagi 1 kali)
+  if (pendingKidsTrigger && (millis() - kidsTriggerTime >= 10000)) {
+    pendingKidsTrigger = false;
+    triggerRelay(1);
+    Serial.println("[GATE] Kids Dual Trigger: Gerbang Dibuka Kembali Setelah 10 Detik");
+  }
+
   if (relayJustClosed) {
     // Jadwalkan soft-reinit RFID Non-Blocking untuk mengatasi noise EMI
     pendingRfidReinit = true;
@@ -1746,6 +1757,14 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
       Serial.println("[AKSES] Valid! Pesan: " + doc["message"].as<String>());
       triggerRelay(1);
       playTone(1); // Bunyi Ceria
+      
+      // Schedule second gate trigger if ticket category is kids
+      String ticket_type = doc["ticket_type"].as<String>();
+      if (ticket_type == "kids") {
+        pendingKidsTrigger = true;
+        kidsTriggerTime = millis();
+        Serial.println("[GATE] Kids category scanned! Second trigger scheduled in 10s...");
+      }
     } else if (status == "invalid") {
       Serial.println("[AKSES] Ditolak! Alasan: " + doc["message"].as<String>());
       playTone(2); // Bunyi Sedih
