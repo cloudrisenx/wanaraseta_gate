@@ -20,7 +20,7 @@
 // 1. ZONA KONFIGURASI UTAMA
 // ========================================================================
 
-#define APP_VERSION         "3.7"               // Versi Firmware ESP32 WiFi
+#define APP_VERSION         "3.8"               // Versi Firmware ESP32 WiFi
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository
 
@@ -1489,15 +1489,18 @@ void setup() {
   }
 
   // Konfigurasi WiFiManager
-  wm.setConnectTimeout(15); // Coba koneksi ke router 15 detik
-  if (wm.getWiFiIsSaved()) {
-    // Jika sudah ada WiFi tersimpan, coba konek tanpa buka Hotspot otomatis jika router mati
-    wm.setEnableConfigPortal(false); 
-  }
-  
+  wm.setConnectTimeout(15);       // Coba konek ke router maksimal 15 detik
+  wm.setConfigPortalTimeout(180); // Portal AP otomatis tutup setelah 3 menit jika tidak diisi
+  wm.setConnectRetries(3);        // Coba reconnect 3x sebelum menyerah
+
   Serial.println("\n[WIFI] Mencoba terhubung ke jaringan...");
-  if (!wm.autoConnect(savedApSSID.c_str(), DEFAULT_AP_PASSWORD)) {
-    Serial.println("[WIFI] Gagal terhubung atau masuk mode setup Hotspot.");
+  bool wifiOk = wm.autoConnect(savedApSSID.c_str(), DEFAULT_AP_PASSWORD);
+
+  if (!wifiOk) {
+    // Gagal konek dan portal timeout — buka ulang AP untuk debug
+    Serial.println("[WIFI] autoConnect gagal / timeout. Membuka Hotspot debug...");
+    wm.startConfigPortal(savedApSSID.c_str(), DEFAULT_AP_PASSWORD);
+    Serial.println("[WIFI] Mode Hotspot aktif. Hubungkan ke '" + savedApSSID + "' untuk konfigurasi.");
   } else {
     Serial.println("[WIFI] Sukses Terhubung! IP Web Dashboard: " + WiFi.localIP().toString());
   }
@@ -1575,9 +1578,6 @@ void setup() {
   // Setup Pin LED RFID sebagai Output
   pinMode(RFID_LED_PIN, OUTPUT);
   digitalWrite(RFID_LED_PIN, LOW); // Default mati (asumsi Active-HIGH)
-
-  // Cek pembaruan firmware 1x saat booting
-  cekUpdateGitHub();
 }
 
 void loop() {
@@ -1592,38 +1592,47 @@ void loop() {
   bool wifiConnected = (WiFi.status() == WL_CONNECTED);
   bool mqttConnected = mqttClient.connected();
 
-  static unsigned long wifiDisconnectTime = millis();
+  static int wifiReconnectAttempts = 0;
+  static unsigned long lastWifiCheck = 0;
+  static unsigned long timeAfterFiveAttempts = 0;
 
   if (wifiConnected) {
-    wifiDisconnectTime = millis();
+    wifiReconnectAttempts = 0;
+    timeAfterFiveAttempts = 0;
+  }
+
+  // --- LOGIKA RECONNECT WIFI ---
+  if (!wifiConnected) {
+    // Coba reconnect setiap 10 detik maksimal 5 kali percobaan
+    if (millis() - lastWifiCheck > 10000 && wifiReconnectAttempts < 5) {
+      lastWifiCheck = millis();
+      if (wm.getWiFiIsSaved()) {
+        wifiReconnectAttempts++;
+        Serial.printf("[WIFI] Terputus! Mencoba menghubungkan ulang ke router... (Percobaan %d/5)\n", wifiReconnectAttempts);
+        WiFi.disconnect();
+        WiFi.begin(); 
+        
+        if (wifiReconnectAttempts == 5) {
+          timeAfterFiveAttempts = millis(); // Catat waktu setelah percobaan ke-5 selesai
+        }
+      }
+    }
   }
 
   // --- LOGIKA WATCHDOG TIMER (WDT) ---
   bool feedWDT = true;
 
   if (wm.getWiFiIsSaved()) {
-    // Jika WiFi terputus > 60 detik (1 Menit)
-    if (!wifiConnected && (millis() - wifiDisconnectTime > 60000)) {
-      feedWDT = false;
+    // Jika WiFi terputus, sudah 5 kali percobaan, biarkan timeout 1 menit sebelum WDT reset board
+    if (!wifiConnected && wifiReconnectAttempts >= 5 && timeAfterFiveAttempts > 0) {
+      if (millis() - timeAfterFiveAttempts > 60000) {
+        feedWDT = false;
+      }
     }
   }
 
   if (feedWDT) {
     esp_task_wdt_reset(); // Beri makan watchdog
-  }
-
-  // --- LOGIKA RECONNECT WIFI ---
-  static unsigned long lastWifiCheck = 0;
-  if (!wifiConnected) {
-    // Coba reconnect setiap 10 detik
-    if (millis() - lastWifiCheck > 10000) {
-      lastWifiCheck = millis();
-      if (wm.getWiFiIsSaved()) {
-        Serial.println("[WIFI] Terputus! Mencoba menghubungkan ulang ke router...");
-        WiFi.disconnect();
-        WiFi.begin(); 
-      }
-    }
   }
 
   // --- LOGIKA RECONNECT MQTT ---
