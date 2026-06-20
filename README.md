@@ -207,26 +207,125 @@ Mikrokontroler ESP32 membaca kartu RFID, mengirim data scan ke EMQX, dan mengger
      ; src_dir = WT32_test
      ```
 3. **Konfigurasi Pin Hardware (di `src_dir/main.cpp`)**:
-   * Sesuaikan pin LED (simulator pintu) dan pin input sentuh/RFID:
-     ```cpp
-     #define LED_PIN             2    // GPIO Built-in LED
-     #define TOUCH_PIN           4    // GPIO Touch Sensor untuk simulasi manual
-     #define TOUCH_THRESHOLD     30   // Sensitivitas sentuhan
-     #define GATE_OPEN_MS        3000 // Durasi gerbang terbuka
-     ```
+   * Pin sudah dikonfigurasi per-target. Pastikan sesuai dengan skema hardware Anda:
+     * **ESP32main**: Relay1=GPIO2, Relay2=GPIO27, RFID SS=GPIO5, Barcode RX=GPIO16
+     * **WT32main**: Relay1=GPIO2, Relay2=GPIO5, Buzzer=GPIO33, RFID SS=GPIO12, Barcode RX=GPIO39
+     * Durasi pulse relay saat ini: **200 ms** (`GATE_OPEN_MS`)
+     * WDT timeout: **5 detik** (`WDT_TIMEOUT_SECONDS`)
 4. **Compile & Upload**:
    * Hubungkan ESP32 ke PC via USB.
    * Jalankan perintah **Build** kemudian **Upload** pada task bar PlatformIO.
-5. **Setup Koneksi WiFi (WiFiManager)**:
+5. **Setup Koneksi WiFi (WiFiManager) — ESP32main**:
    * Saat ESP32 pertama kali dinyalakan (atau gagal terhubung ke WiFi terdaftar), ia akan memancarkan hotspot sendiri.
    * Hubungkan HP/Laptop Anda ke WiFi Hotspot: **`Wanara_Gate_Setup`** (Password: **`griyapersada`**).
    * Halaman login portal WiFiManager akan terbuka secara otomatis di browser HP Anda.
    * Pilih SSID WiFi lokal Anda, masukkan password, lalu klik **Save**.
-   * ESP32 akan restart dan mendapatkan alamat IP lokal. Alamat IP ini dapat diakses untuk membuka dashboard lokal (Port 80) perangkat keras guna mengganti jalur OTA atau melakukan update firmware manual.
+   * ESP32 akan restart dan mendapatkan alamat IP lokal. Buka IP tersebut di browser untuk mengakses dashboard lokal (Port 80).
+   * **Reset WiFiManager**: Sentuh dan tahan **GPIO4** (Touch Pin) selama **10 detik** untuk menghapus kredensial WiFi dan masuk kembali ke mode setup hotspot.
+
+6. **Setup Koneksi Ethernet — WT32main**:
+   * WT32-ETH01 menggunakan koneksi **Ethernet LAN8720** sebagai koneksi utama. Cukup sambungkan kabel RJ45 ke router/switch.
+   * Saat kabel terhubung dan mendapat IP, board akan otomatis mematikan WiFi untuk hemat daya.
+   * Jika kabel Ethernet **terputus**, board otomatis mengaktifkan WiFi AP dengan nama **`WT32_Gate_{client_id}`** (Password: `griyapersada`) sebagai mode debug darurat.
+   * Akses dashboard lokal melalui IP Ethernet di browser (Port 80).
 
 ---
 
-## 4. Format Pengujian Mandiri & Troubleshooting
+## 4. Referensi Firmware v3.9 — ESP32main & WT32main
+
+### A. Perbandingan Fitur & Hardware
+
+| Fitur | **ESP32main** (38-Pin Dev Board) | **WT32main** (WT32-ETH01) |
+| :--- | :--- | :--- |
+| **Koneksi Utama** | WiFi (via WiFiManager) | Ethernet LAN8720 |
+| **Koneksi Fallback** | Hotspot `Wanara_Gate_Setup` | WiFi AP `WT32_Gate_{client_id}` (saat Ethernet putus) |
+| **Relay 1 (Gate In)** | GPIO 2 (Active-LOW) | GPIO 2 (Active-LOW) |
+| **Relay 2 (Alarm/Aux)** | GPIO 27 (Active-LOW) | GPIO 5 (Active-LOW) |
+| **Durasi Relay** | 200 ms (pulse) | 200 ms (pulse) |
+| **RFID MFRC522** | SS:5, RST:22, SCK:18, MISO:19, MOSI:23 | SS:12, RST:4, SCK:14, MISO:35, MOSI:15 |
+| **Barcode UART2** | RX:16, TX:17, Baud:9600 | RX:39, TX:32, Baud:9600 |
+| **LED RFID** | GPIO 26 (nyala 200ms saat scan) | — |
+| **Buzzer Eksternal** | — | GPIO 33 (non-blocking melody) |
+| **Reset WiFi** | Touch GPIO4 (tahan 10 detik) | — |
+| **WDT Timeout** | 5 detik | 5 detik |
+| **OTA Dashboard** | `/cek_update` → streaming log | `/api/git_update` → JSON response |
+
+### B. Konfigurasi Pin Hardware Detail
+
+**ESP32main:**
+```cpp
+#define RELAY1_PIN    2     // Gate In / Built-in LED
+#define RELAY2_PIN    27    // Gate Out / Alarm
+#define RFID_LED_PIN  26    // Indikator LED scan RFID
+#define TOUCH_PIN     4     // Reset WiFiManager (tahan 10 dtk)
+#define SS_PIN        5     // SPI SS RFID
+#define RST_PIN       22    // RFID RST
+#define BARCODE_RX    16    // UART2 Barcode Scanner
+#define BARCODE_TX    17
+```
+
+**WT32main:**
+```cpp
+#define RELAY1_PIN    2     // Gate In
+#define RELAY2_PIN    5     // Gate Out / Alarm
+#define BUZZER_PIN    33    // Buzzer Eksternal
+#define SS_PIN        12    // SPI SS RFID
+#define RST_PIN       4     // RFID RST
+#define BARCODE_RX    39    // UART2 Barcode Scanner (input-only pin)
+#define BARCODE_TX    32
+// Ethernet LAN8720: MDC:23, MDIO:18, PHY_ADDR:1, PWR:16
+```
+
+### C. Tipe Device & Scanner (Dikonfigurasi via Web Dashboard)
+
+Device ini mendukung dua mode operasi yang dapat diganti dari dashboard lokal (Port 80):
+
+| Setting | Nilai | Keterangan |
+| :--- | :--- | :--- |
+| **Tipe Device** | `gate` | Gerbang — trigger Relay 1 saat akses valid |
+| **Tipe Device** | `kasir` | Kasir — tidak ada trigger relay fisik |
+| **Tipe Scanner** | `rfid` | Baca dari sensor MFRC522 |
+| **Tipe Scanner** | `qr` | Baca dari Barcode Scanner UART2 |
+
+### D. Format MQTT Topic Dinamis
+
+Topic MQTT dibentuk otomatis dari konfigurasi **Tipe Device** dan **Client ID**:
+
+```
+📤 Publish  : {device_type}/{mqtt_client_id}/scan/in
+📥 Subscribe: {device_type}/{mqtt_client_id}/result
+              {device_type}/{mqtt_client_id}/command
+```
+
+**Contoh** (device_type=`gate`, client_id=`gate_esp32_01`):
+```
+📤 gate/gate_esp32_01/scan/in
+📥 gate/gate_esp32_01/result
+📥 gate/gate_esp32_01/command
+```
+
+### E. Perintah Remote via MQTT Command Topic
+
+Server backend dapat mengirim perintah langsung ke perangkat melalui topic `/command`:
+
+```json
+{ "command": "open_gate" }    // Trigger Relay 1 (Gerbang Utama)
+{ "command": "open_gate_2" }  // Trigger Relay 2 (Alarm/Aux)
+{ "command": "reboot" }       // Restart board dari jarak jauh
+```
+
+### F. Buzzer Nada WT32main
+
+WT32main memiliki sistem buzzer non-blocking dengan 3 pilihan nada yang dapat diatur dari dashboard tanpa restart:
+
+| Mode | Pilihan Nada |
+| :--- | :--- |
+| **Akses Diterima (Allow)** | `0` Happy Chime (C-E-G naik) · `1` Beep Tunggal Tinggi · `2` Beep Ganda Cepat |
+| **Akses Ditolak (Deny)** | `0` Sad Tone (beep panjang rendah) · `1` Beep Rendah Ganda · `2` Alarm Cepat Berulang |
+
+---
+
+## 5. Format Pengujian Mandiri & Troubleshooting
 
 ### A. Simulasi Scan Kartu via MQTTX (Tanpa Hardware)
 Jika Anda belum merakit perangkat keras ESP32 namun ingin menguji fungsionalitas visual pop-up Kiosk Next.js:
