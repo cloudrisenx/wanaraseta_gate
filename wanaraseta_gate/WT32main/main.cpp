@@ -77,9 +77,13 @@ PubSubClient mqttClient(espClient);
 // Konfigurasi MQTT Default (Akan ditimpa oleh preferensi yang tersimpan)
 String mqtt_server = "127.0.0.1";
 int mqtt_port = 1883;
-String mqtt_user = "gate_wt32_01";
+String mqtt_user = "wt32";
 String mqtt_pass = "11223344";
 String mqtt_client_id = "gate_wt32_01";
+
+// Tipe Device & Scanner (Tersimpan di NVS)
+String device_type  = "gate";   // "gate" atau "kasir"
+String scanner_type = "rfid";   // "rfid" atau "qr"
 
 String folderAktif = "WT32main";
 bool eth_connected = false;
@@ -852,6 +856,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <span class="status-label">MQTT Client ID</span>
             <span class="status-value mono" id="mqtt-client-id">Loading...</span>
           </div>
+          <div class="status-item">
+            <span class="status-label">Tipe Device / Scanner</span>
+            <span class="status-value mono" id="device-type-val">Loading...</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">📤 Publish Topic</span>
+            <span class="status-value mono" id="topic-pub-val" style="color:#10b981;font-size:11px;">Loading...</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">📥 Subscribe Topic</span>
+            <span class="status-value mono" id="topic-sub-val" style="color:#a5b4fc;font-size:11px;">Loading...</span>
+          </div>
         </div>
       </div>
     </div>
@@ -933,8 +949,29 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <input type="password" name="mqtt_pass" class="form-control" value="{{MQTT_PASS}}">
           </div>
           <div class="form-group">
-            <label>Client ID</label>
+            <label>Client ID (Device ID)</label>
             <input type="text" name="mqtt_client_id" class="form-control" value="{{MQTT_CLIENT_ID}}" required>
+          </div>
+          <div class="form-group">
+            <label>Tipe Device</label>
+            <select name="device_type" class="form-control" id="sel-device-type">
+              <option value="gate" {{SEL_DEVICE_GATE}}>Gate (Gerbang)</option>
+              <option value="kasir" {{SEL_DEVICE_KASIR}}>Kasir</option>
+            </select>
+          </div>
+          <div class="form-group" id="scanner-type-group">
+            <label>Tipe Scanner</label>
+            <select name="scanner_type" class="form-control">
+              <option value="rfid" {{SEL_SCANNER_RFID}}>RFID (MFRC522)</option>
+              <option value="qr" {{SEL_SCANNER_QR}}>QR / Barcode</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Topic MQTT Aktif</label>
+            <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:6px;padding:8px 10px;">
+              <div style="font-size:11.5px;margin-bottom:4px;"><span style="color:#9ca3af;">📤 Publish:</span> <span class="mono" style="color:#10b981;">{{TOPIC_PUB}}</span></div>
+              <div style="font-size:11.5px;"><span style="color:#9ca3af;">📥 Subscribe:</span> <span class="mono" style="color:#a5b4fc;">{{TOPIC_SUB}}</span></div>
+            </div>
           </div>
           <button type="submit" class="btn">Simpan MQTT & Restart</button>
         </form>
@@ -1137,6 +1174,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
       document.getElementById('mqtt-broker').innerText = data.mqtt_broker + ':' + data.mqtt_port;
       document.getElementById('mqtt-client-id').innerText = data.mqtt_client_id;
+      document.getElementById('device-type-val').innerText = (data.device_type || '-').toUpperCase() + ' / ' + (data.scanner_type || '-').toUpperCase();
+      document.getElementById('topic-pub-val').innerText = data.mqtt_topic_pub || '-';
+      document.getElementById('topic-sub-val').innerText = data.mqtt_topic_sub || '-';
 
       // Relays UI
       let r1 = document.getElementById('r1-status');
@@ -1271,6 +1311,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       .catch(() => showToast('Error komunikasi', false));
     });
 
+    // Show/hide scanner type berdasarkan device type
+    (function() {
+      var selDev = document.getElementById('sel-device-type');
+      var grpScanner = document.getElementById('scanner-type-group');
+      if (!selDev || !grpScanner) return;
+      function updateScannerGroup() {
+        grpScanner.style.display = selDev.value === 'gate' ? '' : 'none';
+      }
+      selDev.addEventListener('change', updateScannerGroup);
+      updateScannerGroup();
+    })();
+
     document.getElementById('file-input').addEventListener('change', function() {
       let label = this.files.length > 0 ? this.files[0].name : 'Seret file ke sini atau klik untuk memilih';
       document.getElementById('file-name-display').innerText = label;
@@ -1359,6 +1411,12 @@ void handleRoot() {
   html.replace("{{MQTT_PASS}}", mqtt_pass);
   html.replace("{{MQTT_CLIENT_ID}}", mqtt_client_id);
   html.replace("{{RFID_MASTER}}", rfid_master);
+  html.replace("{{SEL_DEVICE_GATE}}", device_type == "gate" ? "selected" : "");
+  html.replace("{{SEL_DEVICE_KASIR}}", device_type == "kasir" ? "selected" : "");
+  html.replace("{{SEL_SCANNER_RFID}}", scanner_type == "rfid" ? "selected" : "");
+  html.replace("{{SEL_SCANNER_QR}}", scanner_type == "qr" ? "selected" : "");
+  html.replace("{{TOPIC_PUB}}", device_type + "/" + mqtt_client_id + "/scan/in");
+  html.replace("{{TOPIC_SUB}}", device_type + "/" + mqtt_client_id + "/result");
 
   html.replace("{{SEL_ALLOW_0}}", tone_allow == 0 ? "selected" : "");
   html.replace("{{SEL_ALLOW_1}}", tone_allow == 1 ? "selected" : "");
@@ -1397,8 +1455,12 @@ void handleStatusData() {
   doc["mqtt_broker"] = mqtt_server;
   doc["mqtt_port"] = mqtt_port;
   doc["mqtt_client_id"] = mqtt_client_id;
-  doc["relay1"] = isRelay1Active;
-  doc["relay2"] = isRelay2Active;
+  doc["relay1"]         = isRelay1Active;
+  doc["relay2"]         = isRelay2Active;
+  doc["device_type"]    = device_type;
+  doc["scanner_type"]   = scanner_type;
+  doc["mqtt_topic_pub"] = device_type + "/" + mqtt_client_id + "/scan/in";
+  doc["mqtt_topic_sub"] = device_type + "/" + mqtt_client_id + "/result";
 
   String output;
   serializeJson(doc, output);
@@ -1422,11 +1484,13 @@ void handleSaveFolder() {
 
 void handleSaveMqtt() {
   if (server.hasArg("mqtt_server")) {
-    mqtt_server = server.arg("mqtt_server");
-    mqtt_port = server.arg("mqtt_port").toInt();
-    mqtt_user = server.arg("mqtt_user");
-    mqtt_pass = server.arg("mqtt_pass");
+    mqtt_server    = server.arg("mqtt_server");
+    mqtt_port      = server.arg("mqtt_port").toInt();
+    mqtt_user      = server.arg("mqtt_user");
+    mqtt_pass      = server.arg("mqtt_pass");
     mqtt_client_id = server.arg("mqtt_client_id");
+    if (server.hasArg("device_type"))  device_type  = server.arg("device_type");
+    if (server.hasArg("scanner_type")) scanner_type = server.arg("scanner_type");
 
     preferences.begin("gate_config", false);
     preferences.putString("mqtt_server", mqtt_server);
@@ -1434,6 +1498,8 @@ void handleSaveMqtt() {
     preferences.putString("mqtt_user", mqtt_user);
     preferences.putString("mqtt_pass", mqtt_pass);
     preferences.putString("mqtt_client_id", mqtt_client_id);
+    preferences.putString("device_type", device_type);
+    preferences.putString("scanner_type", scanner_type);
     preferences.end();
 
     server.send(200, "text/plain", "OK");
@@ -1748,8 +1814,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
   }
 
   String topicStr = String(topic);
-  String resTopic = "gate/" + mqtt_client_id + "/result";
-  String cmdTopic = "gate/" + mqtt_client_id + "/command";
+  String resTopic = device_type + "/" + mqtt_client_id + "/result";
+  String cmdTopic = device_type + "/" + mqtt_client_id + "/command";
 
   if (topicStr == resTopic) {
     String status = doc["status"];
@@ -1821,8 +1887,8 @@ void reconnectMQTT() {
   if (connected) {
     Serial.println("[MQTT] Terhubung!");
 
-    String resTopic = "gate/" + mqtt_client_id + "/result";
-    String cmdTopic = "gate/" + mqtt_client_id + "/command";
+    String resTopic = device_type + "/" + mqtt_client_id + "/result";
+    String cmdTopic = device_type + "/" + mqtt_client_id + "/command";
 
     mqttClient.subscribe(resTopic.c_str());
     mqttClient.subscribe(cmdTopic.c_str());
@@ -1849,9 +1915,11 @@ void setup() {
   mqtt_user = preferences.getString("mqtt_user", mqtt_user);
   mqtt_pass = preferences.getString("mqtt_pass", mqtt_pass);
   mqtt_client_id = preferences.getString("mqtt_client_id", mqtt_client_id);
-  rfid_master = preferences.getString("rfid_master", rfid_master);
-  tone_allow = preferences.getInt("tone_allow", 0);
-  tone_deny = preferences.getInt("tone_deny", 0);
+  rfid_master  = preferences.getString("rfid_master", rfid_master);
+  tone_allow   = preferences.getInt("tone_allow", 0);
+  tone_deny    = preferences.getInt("tone_deny", 0);
+  device_type  = preferences.getString("device_type", "gate");
+  scanner_type = preferences.getString("scanner_type", "rfid");
   preferences.end();
 
   // Pastikan Client ID unik dengan menambahkan suffix MAC address jika masih
@@ -2032,10 +2100,8 @@ void loop() {
       lastBarcodeScan = barcodeData;
 
       if (eth_connected && mqttClient.connected()) {
-        String payload = "{\"barcode\":\"" + barcodeData + "\", \"rfid\":\"" +
-                         barcodeData + "\", \"device_id\":\"" + mqtt_client_id +
-                         "\"}";
-        String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
+        String payload = "{\"barcode\":\"" + barcodeData + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
+        String pubTopic = device_type + "/" + mqtt_client_id + "/scan/in";
         if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
           Serial.println("[MQTT] Barcode sukses terkirim.");
         } else {
@@ -2129,7 +2195,7 @@ void loop() {
           if (eth_connected && mqttClient.connected()) {
             String payload = "{\"rfid\":\"" + rfidUid + "\", \"device_id\":\"" +
                              mqtt_client_id + "\"}";
-            String pubTopic = "gate/" + mqtt_client_id + "/scan/in";
+            String pubTopic = device_type + "/" + mqtt_client_id + "/scan/in";
             if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
               Serial.println("[MQTT] Data scan terkirim ke EMQX.");
             } else {
