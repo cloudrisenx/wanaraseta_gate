@@ -20,7 +20,7 @@
 // 1. ZONA KONFIGURASI UTAMA
 // ========================================================================
 
-#define APP_VERSION         "3.9"               // Versi Firmware ESP32 WiFi
+#define APP_VERSION         "3.11"               // Versi Firmware ESP32 WiFi
 #define GITHUB_USER         "cloudrisenx"       // Username GitHub
 #define GITHUB_REPO         "wanaraseta_gate"   // Nama Repository
 
@@ -54,8 +54,11 @@
 #define SPI_MOSI            23                  // VSPI MOSI
 
 // Cooldown Pembacaan RFID (Milidetik)
-#define COOLDOWN_SAME_CARD_MS 1000              // Cooldown untuk kartu yang sama (dipercepat)
-#define COOLDOWN_ANY_CARD_MS  0                 // Tanpa jeda untuk kartu yang berbeda
+#define COOLDOWN_SAME_CARD_MS    1000           // Cooldown untuk kartu yang sama
+#define COOLDOWN_ANY_CARD_MS     0              // Tanpa jeda untuk kartu yang berbeda
+
+// Cooldown Pembacaan Barcode (Milidetik)
+#define COOLDOWN_SAME_BARCODE_MS 1000           // Fallback cooldown, scanner hardware sudah handle 3 detik
 
 // Touch Pin untuk Reset WiFi Manager (tahan 10 detik)
 #define TOUCH_PIN           4                   // GPIO4 / T0 - Capacitive Touch Pin
@@ -79,9 +82,8 @@ String mqtt_user       = "esp32";
 String mqtt_pass       = "11223344";
 String mqtt_client_id  = "gate_esp32_01";
 
-// Tipe Device & Scanner (Tersimpan di NVS)
+// Tipe Device (Tersimpan di NVS)
 String device_type     = "gate";               // "gate" atau "kasir"
-String scanner_type    = "rfid";               // "rfid" atau "qr"
 
 // Touch Pin - Deteksi tahan untuk reset WiFi
 unsigned long touchStartTime = 0;
@@ -100,8 +102,10 @@ String rfidStatus      = "Mencari Sensor...";
 String lastRfidScan    = "";
 String lastBarcodeScan = "";
 String rfid_master     = "A166C820";
-String lastScannedUid  = "";
-unsigned long lastScannedTime = 0;
+String lastScannedUid     = "";
+unsigned long lastScannedTime  = 0;
+String lastScannedBarcode = "";
+unsigned long lastBarcodeTime  = 0;
 
 // Status & Timer Relay
 unsigned long relay1ActiveTime = 0;
@@ -554,6 +558,35 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       z-index: 999;
     }
     .toast.show { transform: translateY(0); opacity: 1; }
+
+    /* ── Landscape Mobile (tinggi layar < 500px) ── */
+    @media (max-height: 500px) and (orientation: landscape) {
+      .app-container { padding: 10px 14px; }
+      header { margin-bottom: 10px; padding-bottom: 8px; }
+      .brand h1 { font-size: 15px; }
+      .brand p { display: none; }
+      .badge { padding: 3px 8px; font-size: 10px; }
+      .grid { gap: 10px; margin-bottom: 10px; }
+      .card { padding: 12px 14px; border-radius: 10px; }
+      .card:hover { transform: none; box-shadow: none; }
+      .card-title { font-size: 12.5px; margin-bottom: 8px; padding-bottom: 6px; gap: 6px; }
+      .card-title svg { width: 14px; height: 14px; }
+      .status-list { gap: 7px; }
+      .status-item { font-size: 12px; }
+      .mono { font-size: 11px; padding: 1px 5px; }
+      .btn { padding: 7px 12px; font-size: 12px; }
+      .form-group { margin-bottom: 8px; }
+      .form-group label { font-size: 10px; margin-bottom: 3px; }
+      .form-control { padding: 7px 10px; font-size: 12px; }
+      .control-row { gap: 8px; }
+    }
+
+    /* ── Portrait Mobile (lebar < 480px) ── */
+    @media (max-width: 480px) {
+      .app-container { padding: 14px; }
+      header { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -686,7 +719,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <span class="status-value mono" id="mqtt-client-id">Loading...</span>
           </div>
           <div class="status-item">
-            <span class="status-label">Tipe Device / Scanner</span>
+            <span class="status-label">Tipe Device</span>
             <span class="status-value mono" id="device-type-val">Loading...</span>
           </div>
           <div class="status-item">
@@ -718,20 +751,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 0;">
         <div class="status-list" style="justify-content: center;">
           <div class="status-item">
-            <span class="status-label">Trigger Gerbang Utama (Relay 1 - GPIO 2)</span>
+            <span class="status-label">Gerbang 1 (Relay 1 - GPIO 2)</span>
             <span class="status-value text-muted" id="r1-status">⚡ STANDBY</span>
           </div>
           <div class="status-item">
-            <span class="status-label">Trigger Alarm/Aux (Relay 2 - GPIO 27)</span>
+            <span class="status-label">Gerbang 2 (Relay 2 - GPIO 27)</span>
             <span class="status-value text-muted" id="r2-status">⚡ STANDBY</span>
           </div>
         </div>
         <div class="control-row" style="margin-top: 0; display: flex; gap: 10px; justify-content: flex-start; align-items: center; align-content: center; flex-wrap: wrap; width: 100%;">
           <button class="btn" onclick="triggerRelay(1)" style="width: auto; padding: 8px 16px; font-size: 13px;">
-            🔓 Buka Gerbang In (R1)
+            🔓 Buka Gerbang 1 (R1)
           </button>
           <button class="btn btn-secondary" onclick="triggerRelay(2)" style="width: auto; padding: 8px 16px; font-size: 13px;">
-            🔔 Picu Alarm/Aux (R2)
+            🔓 Buka Gerbang 2 (R2)
           </button>
         </div>
       </div>
@@ -796,13 +829,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
               <option value="kasir" {{SEL_DEVICE_KASIR}}>Kasir</option>
             </select>
           </div>
-          <div class="form-group" id="scanner-type-group">
-            <label>Tipe Scanner</label>
-            <select name="scanner_type" class="form-control">
-              <option value="rfid" {{SEL_SCANNER_RFID}}>RFID (MFRC522)</option>
-              <option value="qr" {{SEL_SCANNER_QR}}>QR / Barcode</option>
-            </select>
-          </div>
+
           <div class="form-group">
             <label>Topic MQTT Aktif</label>
             <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:6px;padding:8px 10px;">
@@ -928,7 +955,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       }
       document.getElementById('mqtt-broker').innerText = data.mqtt_broker + ':' + data.mqtt_port;
       document.getElementById('mqtt-client-id').innerText = data.mqtt_client_id;
-      document.getElementById('device-type-val').innerText = (data.device_type || '-').toUpperCase() + ' / ' + (data.scanner_type || '-').toUpperCase();
+      document.getElementById('device-type-val').innerText = (data.device_type || '-').toUpperCase();
       document.getElementById('topic-pub-val').innerText = data.mqtt_topic_pub || '-';
       document.getElementById('topic-sub-val').innerText = data.mqtt_topic_sub || '-';
       let touchEl = document.getElementById('touch-status-val');
@@ -946,8 +973,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       r1.className = data.relay1 ? 'status-value text-green' : 'status-value text-muted';
 
       let r2 = document.getElementById('r2-status');
-      r2.innerText = data.relay2 ? '🔔 AKTIF (Pulse)' : '⚡ STANDBY';
-      r2.className = data.relay2 ? 'status-value text-orange' : 'status-value text-muted';
+      r2.innerText = data.relay2 ? '✅ AKTIF (Pulse)' : '⚡ STANDBY';
+      r2.className = data.relay2 ? 'status-value text-green' : 'status-value text-muted';
     }
 
     function fetchStatus() {
@@ -1071,17 +1098,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       .catch(() => showToast('Gagal menyimpan kartu master', false));
     });
 
-    // Show/hide scanner type berdasarkan device type
-    (function() {
-      var selDev = document.getElementById('sel-device-type');
-      var grpScanner = document.getElementById('scanner-type-group');
-      if (!selDev || !grpScanner) return;
-      function updateScannerGroup() {
-        grpScanner.style.display = selDev.value === 'gate' ? '' : 'none';
-      }
-      selDev.addEventListener('change', updateScannerGroup);
-      updateScannerGroup();
-    })();
+
 
     document.getElementById('file-input').addEventListener('change', function() {
       let label = this.files.length > 0 ? this.files[0].name : 'Seret file ke sini atau klik untuk memilih';
@@ -1169,8 +1186,7 @@ void handleRoot() {
   html.replace("{{RFID_MASTER}}", rfid_master);
   html.replace("{{SEL_DEVICE_GATE}}", device_type == "gate" ? "selected" : "");
   html.replace("{{SEL_DEVICE_KASIR}}", device_type == "kasir" ? "selected" : "");
-  html.replace("{{SEL_SCANNER_RFID}}", scanner_type == "rfid" ? "selected" : "");
-  html.replace("{{SEL_SCANNER_QR}}", scanner_type == "qr" ? "selected" : "");
+
   html.replace("{{TOPIC_PUB}}", device_type + "/" + mqtt_client_id + "/scan/in");
   html.replace("{{TOPIC_SUB}}", device_type + "/" + mqtt_client_id + "/result");
 
@@ -1210,7 +1226,6 @@ void handleStatusData() {
   doc["relay1"]        = isRelay1Active;
   doc["relay2"]        = isRelay2Active;
   doc["device_type"]   = device_type;
-  doc["scanner_type"]  = scanner_type;
   doc["mqtt_topic_pub"]= device_type + "/" + mqtt_client_id + "/scan/in";
   doc["mqtt_topic_sub"]= device_type + "/" + mqtt_client_id + "/result";
   doc["touch_active"]  = isTouching;
@@ -1261,7 +1276,6 @@ void handleSaveMqtt() {
     mqtt_pass      = server.arg("mqtt_pass");
     mqtt_client_id = server.arg("mqtt_client_id");
     if (server.hasArg("device_type"))  device_type  = server.arg("device_type");
-    if (server.hasArg("scanner_type")) scanner_type = server.arg("scanner_type");
 
     preferences.begin("gate_config", false);
     preferences.putString("mqtt_server", mqtt_server);
@@ -1270,7 +1284,6 @@ void handleSaveMqtt() {
     preferences.putString("mqtt_pass", mqtt_pass);
     preferences.putString("mqtt_client_id", mqtt_client_id);
     preferences.putString("device_type", device_type);
-    preferences.putString("scanner_type", scanner_type);
     preferences.end();
 
     server.send(200, "text/plain", "OK");
@@ -1567,7 +1580,6 @@ void setup() {
   mqtt_client_id = preferences.getString("mqtt_client_id", mqtt_client_id);
   rfid_master    = preferences.getString("rfid_master", rfid_master);
   device_type    = preferences.getString("device_type", "gate");
-  scanner_type   = preferences.getString("scanner_type", "rfid");
   preferences.end();
 
   // Pastikan Client ID unik dengan menambahkan suffix MAC address jika masih default atau kosong
@@ -1771,15 +1783,26 @@ void loop() {
     barcodeData.trim();
     if (barcodeData.length() > 0) {
       Serial.println("[BARCODE] Terdeteksi: " + barcodeData);
-      lastBarcodeScan = barcodeData;
 
-      if (wifiConnected && mqttClient.connected()) {
-        String payload = "{\"barcode\":\"" + barcodeData + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
-        String pubTopic = device_type + "/" + mqtt_client_id + "/scan/in";
-        if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
-          Serial.println("[MQTT] Barcode sukses terkirim.");
-        } else {
-          Serial.println("[MQTT] Barcode gagal terkirim!");
+      unsigned long nowBarcode       = millis();
+      bool isSameBarcode             = (barcodeData == lastScannedBarcode);
+      bool withinBarcodeCooldown     = (nowBarcode - lastBarcodeTime < COOLDOWN_SAME_BARCODE_MS);
+
+      if (isSameBarcode && withinBarcodeCooldown) {
+        Serial.println("[BARCODE] Cooldown aktif, scan diabaikan.");
+      } else {
+        lastScannedBarcode = barcodeData;
+        lastBarcodeTime    = nowBarcode;
+        lastBarcodeScan    = barcodeData;
+
+        if (wifiConnected && mqttClient.connected()) {
+          String payload = "{\"barcode\":\"" + barcodeData + "\", \"device_id\":\"" + mqtt_client_id + "\"}";
+          String pubTopic = device_type + "/" + mqtt_client_id + "/scan/in";
+          if (mqttClient.publish(pubTopic.c_str(), payload.c_str())) {
+            Serial.println("[MQTT] Barcode sukses terkirim.");
+          } else {
+            Serial.println("[MQTT] Barcode gagal terkirim!");
+          }
         }
       }
     }
