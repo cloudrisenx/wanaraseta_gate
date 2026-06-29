@@ -361,12 +361,32 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       border-color: rgba(99, 102, 241, 0.3);
       color: #a5b4fc;
     }
-    .grid {
+    .dashboard-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 20px;
-      margin-bottom: 20px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      align-items: start;
     }
+    .dash-section {
+      padding: 0 20px;
+      border-right: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .dash-section:first-child { padding-left: 0; }
+    .dash-section:last-child { border-right: none; padding-right: 0; }
+    .dash-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dash-section-title svg { width: 14px; height: 14px; color: var(--primary); flex-shrink: 0; }
     .card {
       background: var(--card-bg);
       backdrop-filter: blur(12px);
@@ -472,6 +492,36 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       gap: 10px;
       margin-top: 12px;
     }
+    .firmware-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      align-items: start;
+    }
+    .firmware-divider {
+      padding-left: 24px;
+      border-left: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 0;
+      align-items: start;
+    }
+    .section-divider {
+      padding-left: 24px;
+      border-left: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .subsection-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
     .form-group {
       margin-bottom: 12px;
     }
@@ -566,7 +616,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       .brand h1 { font-size: 15px; }
       .brand p { display: none; }
       .badge { padding: 3px 8px; font-size: 10px; }
-      .grid { gap: 10px; margin-bottom: 10px; }
+      .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+      .dash-section { padding: 0 12px; }
+      .firmware-grid { gap: 10px; }
+      .settings-grid { gap: 10px; }
       .card { padding: 12px 14px; border-radius: 10px; }
       .card:hover { transform: none; box-shadow: none; }
       .card-title { font-size: 12.5px; margin-bottom: 8px; padding-bottom: 6px; gap: 6px; }
@@ -581,11 +634,26 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       .control-row { gap: 8px; }
     }
 
-    /* ── Portrait Mobile (lebar < 480px) ── */
-    @media (max-width: 480px) {
+    /* ── Tablet (< 900px) ── */
+    @media (max-width: 900px) {
+      .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+      .dash-section:nth-child(2) { border-right: none; padding-right: 0; }
+      .dash-section:nth-child(3) { padding-left: 0; border-right: 1px solid rgba(255,255,255,0.07); padding-top: 16px; }
+      .dash-section:nth-child(4) { padding-top: 16px; }
+      .settings-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Portrait Mobile (lebar < 600px) ── */
+    @media (max-width: 600px) {
       .app-container { padding: 14px; }
       header { flex-direction: column; align-items: flex-start; gap: 8px; }
-      .grid { grid-template-columns: 1fr; }
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .dash-section { padding: 0; border-right: none; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px; margin-top: 14px; }
+      .dash-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+      .firmware-grid { grid-template-columns: 1fr; }
+      .firmware-divider { padding-left: 0; border-left: none; border-top: 1px solid rgba(255,255,255,0.07); padding-top: 20px; margin-top: 16px; }
+      .settings-grid { grid-template-columns: 1fr; }
+      .section-divider { padding-left: 0; border-left: none; border-top: 1px solid rgba(255,255,255,0.07); padding-top: 20px; margin-top: 16px; }
     }
   </style>
 </head>
@@ -602,285 +670,268 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       </div>
     </header>
 
-    <div class="grid">
-      <!-- Card Status Hardware & Sistem -->
-      <div class="card">
-        <h3 class="card-title">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
-          Status Hardware & Sistem
-        </h3>
-        <div class="status-list">
-          <div class="status-item">
-            <span class="status-label">Uptime</span>
-            <span class="status-value mono" id="uptime">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">Free Heap RAM</span>
-            <span class="status-value mono" id="free-heap">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">Min Free Heap</span>
-            <span class="status-value mono" id="min-free-heap">Loading...</span>
-          </div>
-          <div class="status-item" style="margin-top: 6px;">
-            <button class="btn btn-secondary btn-danger" onclick="rebootDevice()">
-              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 111.086 1.086L10.5 14.25h3.75a4.5 4.5 0 010 9H8.25m.75-12h-.008v-.008H9v.008z"></path></svg>
-              Reboot Board
-            </button>
-          </div>
-        </div>
-      </div>
+    <!-- Card 1: Dashboard Status Lengkap -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="dashboard-grid">
 
-      <!-- Card RFID Scanner -->
-      <div class="card">
-        <h3 class="card-title">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-          RFID Scanner (MFRC522)
-        </h3>
-        <div class="status-list">
-          <div class="status-item">
-            <span class="status-label">Status Koneksi</span>
-            <span class="status-value text-green" id="rfid-status-val">
-              <span class="status-indicator indicator-green" id="rfid-status-ind"></span>
-              Loading...
-            </span>
+        <div class="dash-section">
+          <div class="dash-section-title">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+            Hardware & Sistem
           </div>
-          <div class="status-item">
-            <span class="status-label">Versi Register PCD</span>
-            <span class="status-value mono" id="rfid-version">Loading...</span>
+          <div class="status-list">
+            <div class="status-item">
+              <span class="status-label">Uptime</span>
+              <span class="status-value mono" id="uptime">Loading...</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Free Heap RAM</span>
+              <span class="status-value mono" id="free-heap">Loading...</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Min Free Heap</span>
+              <span class="status-value mono" id="min-free-heap">Loading...</span>
+            </div>
           </div>
-          <div class="status-item">
-            <span class="status-label">Scan UID Terakhir</span>
-            <span class="status-value mono" id="last-rfid" style="color: #6366f1;">Belum ada kartu</span>
-          </div>
+          <button class="btn btn-secondary btn-danger" onclick="rebootDevice()" style="margin-top:14px;width:100%;">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 111.086 1.086L10.5 14.25h3.75a4.5 4.5 0 010 9H8.25m.75-12h-.008v-.008H9v.008z"></path></svg>
+            Reboot Board
+          </button>
         </div>
-      </div>
 
-      <!-- Card Barcode Scanner -->
-      <div class="card">
-        <h3 class="card-title">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5v14M7 5v14M11 5v14M15 5v14M17 5v14M21 5v14"></path></svg>
-          Barcode Scanner (UART2)
-        </h3>
-        <div class="status-list">
-          <div class="status-item">
-            <span class="status-label">Status Koneksi</span>
-            <span class="status-value text-green" id="barcode-status-val">
-              <span class="status-indicator indicator-green" id="barcode-status-ind"></span>
-              ✅ AKTIF
-            </span>
+        <div class="dash-section">
+          <div class="dash-section-title">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+            RFID & Barcode
           </div>
-          <div class="status-item">
-            <span class="status-label">Scan Barcode Terakhir</span>
-            <span class="status-value mono" id="last-barcode" style="color: #10b981;">Belum ada barcode</span>
+          <div class="status-list">
+            <div class="status-item">
+              <span class="status-label">RFID Status</span>
+              <span class="status-value text-green" id="rfid-status-val">
+                <span class="status-indicator indicator-green" id="rfid-status-ind"></span>
+                Loading...
+              </span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Versi PCD</span>
+              <span class="status-value mono" id="rfid-version">Loading...</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">UID Terakhir</span>
+              <span class="status-value mono" id="last-rfid" style="color:#6366f1;">Belum ada kartu</span>
+            </div>
+          </div>
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05);">
+            <div class="status-list">
+              <div class="status-item">
+                <span class="status-label">Barcode Status</span>
+                <span class="status-value text-green" id="barcode-status-val">
+                  <span class="status-indicator indicator-green" id="barcode-status-ind"></span>
+                  ✅ AKTIF
+                </span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Barcode Terakhir</span>
+                <span class="status-value mono" id="last-barcode" style="color:#10b981;">Belum ada barcode</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- Card Jaringan WiFi & MQTT -->
-      <div class="card">
-        <h3 class="card-title">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 002 2h2m-4-3h1.286a2 2 0 00.707-.13l1.581-.79a2 2 0 00.41-.318l1.361-1.36a2 2 0 00.318-.41L21 6.5"></path></svg>
-          Koneksi & MQTT Broker
-        </h3>
-        <div class="status-list">
-          <div class="status-item">
-            <span class="status-label">Koneksi WiFi</span>
-            <span class="status-value text-green" id="wifi-status-val">
-              <span class="status-indicator indicator-green" id="wifi-status-ind"></span>
-              Loading...
-            </span>
+        <div class="dash-section">
+          <div class="dash-section-title">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 002 2h2m-4-3h1.286a2 2 0 00.707-.13l1.581-.79a2 2 0 00.41-.318l1.361-1.36a2 2 0 00.318-.41L21 6.5"></path></svg>
+            Koneksi & MQTT
           </div>
-          <div class="status-item">
-            <span class="status-label">SSID WiFi</span>
-            <span class="status-value mono" id="wifi-ssid">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">Kekuatan Sinyal</span>
-            <span class="status-value mono" id="wifi-rssi">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">Alamat IP Board</span>
-            <span class="status-value mono" id="wifi-ip">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">EMQX MQTT Broker</span>
-            <span class="status-value text-green" id="mqtt-status-val">
-              <span class="status-indicator indicator-green" id="mqtt-status-ind"></span>
-              Loading...
-            </span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">Alamat Broker</span>
-            <span class="status-value mono" id="mqtt-broker">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">MQTT Client ID</span>
-            <span class="status-value mono" id="mqtt-client-id">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">Tipe Device</span>
-            <span class="status-value mono" id="device-type-val">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">📤 Publish Topic</span>
-            <span class="status-value mono" id="topic-pub-val" style="color:#10b981;font-size:11px;">Loading...</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">📥 Subscribe Topic</span>
-            <span class="status-value mono" id="topic-sub-val" style="color:#a5b4fc;font-size:11px;">Loading...</span>
-          </div>
-          <div class="control-row" style="margin-top: 16px;">
-            <button class="btn btn-secondary" onclick="reconnectWifi()" style="font-size: 12px; padding: 6px;">🔄 Reconnect WiFi</button>
-            <button class="btn btn-secondary btn-danger" onclick="forgetWifi()" style="font-size: 12px; padding: 6px;">🗑️ Lupakan WiFi</button>
-          </div>
-          <div class="status-item" style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.05);padding-top:10px;">
-            <span class="status-label">Reset WiFi Manager</span>
-            <span class="status-value mono text-orange" id="touch-status-val" style="font-size:11px;">GPIO4 — tahan 10 dtk</span>
+          <div class="status-list">
+            <div class="status-item">
+              <span class="status-label">Koneksi WiFi</span>
+              <span class="status-value text-green" id="wifi-status-val">
+                <span class="status-indicator indicator-green" id="wifi-status-ind"></span>
+                Loading...
+              </span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">SSID WiFi</span>
+              <span class="status-value mono" id="wifi-ssid">Loading...</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Kekuatan Sinyal</span>
+              <span class="status-value mono" id="wifi-rssi">Loading...</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">IP Board</span>
+              <span class="status-value mono" id="wifi-ip">Loading...</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">EMQX Broker</span>
+              <span class="status-value text-green" id="mqtt-status-val">
+                <span class="status-indicator indicator-green" id="mqtt-status-ind"></span>
+                Loading...
+              </span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Alamat Broker</span>
+              <span class="status-value mono" id="mqtt-broker">Loading...</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Client ID</span>
+              <span class="status-value mono" id="mqtt-client-id">Loading...</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Tipe Device</span>
+              <span class="status-value mono" id="device-type-val">Loading...</span>
+            </div>
+            <div class="status-item" style="flex-direction:column;align-items:flex-start;gap:3px;">
+              <span class="status-label">📤 Publish Topic</span>
+              <span class="status-value mono" id="topic-pub-val" style="color:#10b981;font-size:11px;word-break:break-all;">Loading...</span>
+            </div>
+            <div class="status-item" style="flex-direction:column;align-items:flex-start;gap:3px;">
+              <span class="status-label">📥 Subscribe Topic</span>
+              <span class="status-value mono" id="topic-sub-val" style="color:#a5b4fc;font-size:11px;word-break:break-all;">Loading...</span>
+            </div>
           </div>
         </div>
+
+        <div class="dash-section">
+          <div class="dash-section-title">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"></path></svg>
+            Relay Gerbang
+          </div>
+          <div class="status-list">
+            <div class="status-item">
+              <span class="status-label">Gerbang 1 (R1 — GPIO 2)</span>
+              <span class="status-value text-muted" id="r1-status">⚡ STANDBY</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Gerbang 2 (R2 — GPIO 27)</span>
+              <span class="status-value text-muted" id="r2-status">⚡ STANDBY</span>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">
+            <button class="btn" onclick="triggerRelay(1)">🔓 Buka Gerbang 1 (R1)</button>
+            <button class="btn btn-secondary" onclick="triggerRelay(2)">🔓 Buka Gerbang 2 (R2)</button>
+          </div>
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.05);">
+            <div class="control-row">
+              <button class="btn btn-secondary" onclick="reconnectWifi()" style="font-size:11px;padding:6px;">🔄 Reconnect WiFi</button>
+              <button class="btn btn-secondary btn-danger" onclick="forgetWifi()" style="font-size:11px;padding:6px;">🗑️ Lupakan WiFi</button>
+            </div>
+            <div class="status-item" style="margin-top:10px;">
+              <span class="status-label">Reset via Touch</span>
+              <span class="status-value mono text-orange" id="touch-status-val" style="font-size:11px;">GPIO4 — tahan 10 dtk</span>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
-    <!-- Card Output / Relay & Manual Trigger -->
-    <div class="card" style="margin-bottom: 24px;">
+    <!-- Card 2: Update Firmware -->
+    <div class="card" style="margin-bottom:16px;">
       <h3 class="card-title">
-        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"></path></svg>
-        Kontrol Manual Relay Gerbang
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
+        Update Firmware
       </h3>
-      <div class="grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 0;">
-        <div class="status-list" style="justify-content: center;">
-          <div class="status-item">
-            <span class="status-label">Gerbang 1 (Relay 1 - GPIO 2)</span>
-            <span class="status-value text-muted" id="r1-status">⚡ STANDBY</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">Gerbang 2 (Relay 2 - GPIO 27)</span>
-            <span class="status-value text-muted" id="r2-status">⚡ STANDBY</span>
-          </div>
+      <div class="firmware-grid">
+        <div>
+          <div class="subsection-title">GitHub OTA & Target Mesin</div>
+          <form id="form-folder">
+            <div class="form-group">
+              <label>Pilih Target Board (Folder GitHub)</label>
+              <select name="folder_name" class="form-control">
+                <option value="ESP32main" {{SEL_ESP32MAIN}}>Mesin ESP32 (ESP32main)</option>
+                <option value="ESP32_test" {{SEL_ESP32TEST}}>Mesin ESP32 Test (ESP32_test)</option>
+                <option value="WT32main" {{SEL_WT32MAIN}}>Mesin WT32 (WT32main)</option>
+                <option value="WT32_test" {{SEL_WT32TEST}}>Mesin WT32 Test (WT32_test)</option>
+                <option value="src_mainOTA" {{SEL_SRCMAINOTA}}>Main OTA (src_mainOTA)</option>
+              </select>
+            </div>
+            <button type="submit" class="btn" style="margin-bottom:10px;">Simpan Target & Restart</button>
+          </form>
+          <button class="btn btn-secondary" onclick="window.location.href='/cek_update'">📥 Cek Update GitHub Sekarang</button>
         </div>
-        <div class="control-row" style="margin-top: 0; display: flex; gap: 10px; justify-content: flex-start; align-items: center; align-content: center; flex-wrap: wrap; width: 100%;">
-          <button class="btn" onclick="triggerRelay(1)" style="width: auto; padding: 8px 16px; font-size: 13px;">
-            🔓 Buka Gerbang 1 (R1)
-          </button>
-          <button class="btn btn-secondary" onclick="triggerRelay(2)" style="width: auto; padding: 8px 16px; font-size: 13px;">
-            🔓 Buka Gerbang 2 (R2)
-          </button>
+        <div class="firmware-divider">
+          <div class="subsection-title">Upload Firmware Manual (.bin)</div>
+          <form id="form-upload">
+            <div class="form-group">
+              <label>Pilih File Firmware .bin</label>
+              <div class="file-input-wrapper">
+                <input type="file" name="update" id="file-input" accept=".bin">
+                <span class="file-input-text" id="file-name-display">Seret file ke sini atau klik untuk memilih</span>
+              </div>
+            </div>
+            <button type="submit" class="btn">Upload & Flash</button>
+          </form>
+          <div class="progress-container" id="progress-container">
+            <div class="progress-track">
+              <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <div class="progress-info">
+              <span id="progress-status">Menyiapkan...</span>
+              <span id="progress-percent">0%</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="grid">
-      <!-- Card Konfigurasi Target Firmware & Update -->
-      <div class="card">
-        <h3 class="card-title">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path></svg>
-          GitHub OTA & Target Mesin
-        </h3>
-        <form id="form-folder">
-          <div class="form-group">
-            <label>Pilih Target Board (Folder GitHub)</label>
-            <select name="folder_name" class="form-control">
-              <option value="ESP32main" {{SEL_ESP32MAIN}}>Mesin ESP32 (ESP32main)</option>
-              <option value="ESP32_test" {{SEL_ESP32TEST}}>Mesin ESP32 Test (ESP32_test)</option>
-              <option value="WT32main" {{SEL_WT32MAIN}}>Mesin WT32 (WT32main)</option>
-              <option value="WT32_test" {{SEL_WT32TEST}}>Mesin WT32 Test (WT32_test)</option>
-              <option value="src_mainOTA" {{SEL_SRCMAINOTA}}>Main OTA (src_mainOTA)</option>
-            </select>
-          </div>
-          <button type="submit" class="btn" style="margin-bottom: 12px;">Simpan Target & Restart</button>
-        </form>
-        <button class="btn btn-secondary" onclick="window.location.href='/cek_update'">
-          📥 Cek Update GitHub Sekarang
-        </button>
-      </div>
-
-      <!-- Card Konfigurasi MQTT -->
-      <div class="card">
-        <h3 class="card-title">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-          Pengaturan MQTT Broker
-        </h3>
-        <form id="form-mqtt">
-          <div class="form-group">
-            <label>IP Server Broker</label>
-            <input type="text" name="mqtt_server" class="form-control" placeholder="192.168.1.50" value="{{MQTT_SERVER}}" required>
-          </div>
-          <div class="form-group">
-            <label>Port Broker</label>
-            <input type="number" name="mqtt_port" class="form-control" placeholder="1883" value="{{MQTT_PORT}}" required>
-          </div>
-          <div class="form-group">
-            <label>Username MQTT</label>
-            <input type="text" name="mqtt_user" class="form-control" value="{{MQTT_USER}}">
-          </div>
-          <div class="form-group">
-            <label>Password MQTT</label>
-            <input type="password" name="mqtt_pass" class="form-control" value="{{MQTT_PASS}}">
-          </div>
-          <div class="form-group">
-            <label>Client ID (Device ID)</label>
-            <input type="text" name="mqtt_client_id" class="form-control" value="{{MQTT_CLIENT_ID}}" required>
-          </div>
-          <div class="form-group">
-            <label>Tipe Device</label>
-            <select name="device_type" class="form-control" id="sel-device-type">
-              <option value="gate" {{SEL_DEVICE_GATE}}>Gate (Gerbang)</option>
-              <option value="kasir" {{SEL_DEVICE_KASIR}}>Kasir</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>Topic MQTT Aktif</label>
-            <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:6px;padding:8px 10px;">
-              <div style="font-size:11.5px;margin-bottom:4px;"><span style="color:#9ca3af;">📤 Publish:</span> <span class="mono" style="color:#10b981;">{{TOPIC_PUB}}</span></div>
-              <div style="font-size:11.5px;"><span style="color:#9ca3af;">📥 Subscribe:</span> <span class="mono" style="color:#a5b4fc;">{{TOPIC_SUB}}</span></div>
+    <!-- Card 3: Pengaturan -->
+    <div class="card">
+      <h3 class="card-title">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+        Pengaturan
+      </h3>
+      <div class="settings-grid">
+        <div>
+          <div class="subsection-title">Kartu Master (Bypass)</div>
+          <form id="form-master">
+            <div class="form-group">
+              <label>UID Kartu Master</label>
+              <input type="text" name="rfid_master" class="form-control" placeholder="A166C820" value="{{RFID_MASTER}}" required>
             </div>
-          </div>
-          <button type="submit" class="btn">Simpan MQTT & Restart</button>
-        </form>
-      </div>
-
-      <!-- Card Konfigurasi Kartu Master -->
-      <div class="card">
-        <h3 class="card-title">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-          Pengaturan Kartu Master (Bypass)
-        </h3>
-        <form id="form-master">
-          <div class="form-group">
-            <label>UID Kartu Master</label>
-            <input type="text" name="rfid_master" class="form-control" placeholder="A166C820" value="{{RFID_MASTER}}" required>
-          </div>
-          <button type="submit" class="btn">Simpan Master & Restart</button>
-        </form>
-      </div>
-
-      <!-- Card Upload Firmware Manual -->
-      <div class="card">
-        <h3 class="card-title">
-          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-          Upload Firmware Manual (.bin)
-        </h3>
-        <form id="form-upload">
-          <div class="form-group">
-            <label>Pilih File Firmware .bin</label>
-            <div class="file-input-wrapper">
-              <input type="file" name="update" id="file-input" accept=".bin">
-              <span class="file-input-text" id="file-name-display">Seret file ke sini atau klik untuk memilih</span>
+            <button type="submit" class="btn">Simpan Master & Restart</button>
+          </form>
+        </div>
+        <div class="section-divider">
+          <div class="subsection-title">Pengaturan MQTT Broker</div>
+          <form id="form-mqtt">
+            <div class="form-group">
+              <label>IP Server Broker</label>
+              <input type="text" name="mqtt_server" class="form-control" placeholder="192.168.1.50" value="{{MQTT_SERVER}}" required>
             </div>
-          </div>
-          <button type="submit" class="btn">Upload & Flash</button>
-        </form>
-
-        <div class="progress-container" id="progress-container">
-          <div class="progress-track">
-            <div class="progress-bar" id="progress-bar"></div>
-          </div>
-          <div class="progress-info">
-            <span id="progress-status">Menyiapkan...</span>
-            <span id="progress-percent">0%</span>
-          </div>
+            <div class="form-group">
+              <label>Port Broker</label>
+              <input type="number" name="mqtt_port" class="form-control" placeholder="1883" value="{{MQTT_PORT}}" required>
+            </div>
+            <div class="form-group">
+              <label>Username MQTT</label>
+              <input type="text" name="mqtt_user" class="form-control" value="{{MQTT_USER}}">
+            </div>
+            <div class="form-group">
+              <label>Password MQTT</label>
+              <input type="password" name="mqtt_pass" class="form-control" value="{{MQTT_PASS}}">
+            </div>
+            <div class="form-group">
+              <label>Client ID (Device ID)</label>
+              <input type="text" name="mqtt_client_id" class="form-control" value="{{MQTT_CLIENT_ID}}" required>
+            </div>
+            <div class="form-group">
+              <label>Tipe Device</label>
+              <select name="device_type" class="form-control" id="sel-device-type">
+                <option value="gate" {{SEL_DEVICE_GATE}}>Gate (Gerbang)</option>
+                <option value="kasir" {{SEL_DEVICE_KASIR}}>Kasir</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Topic MQTT Aktif</label>
+              <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border-color);border-radius:6px;padding:8px 10px;">
+                <div style="font-size:11.5px;margin-bottom:4px;"><span style="color:#9ca3af;">📤 Publish:</span> <span class="mono" style="color:#10b981;">{{TOPIC_PUB}}</span></div>
+                <div style="font-size:11.5px;"><span style="color:#9ca3af;">📥 Subscribe:</span> <span class="mono" style="color:#a5b4fc;">{{TOPIC_SUB}}</span></div>
+              </div>
+            </div>
+            <button type="submit" class="btn">Simpan MQTT & Restart</button>
+          </form>
         </div>
       </div>
     </div>
